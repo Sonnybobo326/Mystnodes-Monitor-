@@ -1,1 +1,735 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NodeManager</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ===== STATUS BAR ===== -->
+  <div class="status-bar">
+    <span class="status-time" id="statusTime">9:41</span>
+    <div class="status-icons">
+      <i class="fas fa-signal"></i>
+      <i class="fas fa-wifi"></i>
+      <i class="fas fa-battery-three-quarters"></i>
+    </div>
+  </div>
+
+  <div class="app-wrapper">
+
+    <!-- ========== SCREEN: DASHBOARD ========== -->
+    <section class="screen active" id="screen-dashboard">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="app-logo"><i class="fas fa-atom"></i></div>
+          <div>
+            <div class="topbar-title">NodeManager</div>
+            <div class="topbar-sub" id="dash-subtitle">Loading…</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button class="icon-btn" id="notifBtn"><i class="fas fa-bell"></i><span class="badge">2</span></button>
+          <button class="icon-btn" onclick="showScreen('screen-settings')"><i class="fas fa-cog"></i></button>
+        </div>
+      </header>
+
+      <div class="screen-scroll">
+        <!-- Summary Cards -->
+        <div class="summary-row">
+          <div class="summary-card card-green">
+            <div class="summary-icon"><i class="fas fa-circle-check"></i></div>
+            <div class="summary-value" id="summary-nodes-val">—</div>
+            <div class="summary-label">Online</div>
+          </div>
+          <div class="summary-card card-purple">
+            <div class="summary-icon"><i class="fas fa-bolt"></i></div>
+            <div class="summary-value">0.847</div>
+            <div class="summary-label">MYST Today</div>
+          </div>
+          <div class="summary-card card-teal">
+            <div class="summary-icon"><i class="fas fa-shield-halved"></i></div>
+            <div class="summary-value" id="summary-ts-val">—</div>
+            <div class="summary-label">Tailscale</div>
+          </div>
+        </div>
+
+        <!-- Earnings Chart -->
+        <div class="card mt-16">
+          <div class="card-header">
+            <span class="card-title">7-Day MYST Earnings</span>
+            <div class="tab-pills">
+              <button class="pill active" onclick="switchChartTab(this,'7d')">7D</button>
+              <button class="pill" onclick="switchChartTab(this,'30d')">30D</button>
+            </div>
+          </div>
+          <div style="height:160px;position:relative;">
+            <canvas id="earningsChart"></canvas>
+          </div>
+          <div class="chart-footer">
+            <span><i class="fas fa-arrow-trend-up text-green"></i> +12.4% vs last week</span>
+            <span class="text-muted">Total: 5.23 MYST</span>
+          </div>
+        </div>
+
+        <!-- Myst Nodes -->
+        <div class="section-header">
+          <span><span class="source-dot myst-dot"></span> Myst Nodes</span>
+          <button class="link-btn" onclick="showScreen('screen-nodes'); setNavById('nav-nodes')">See all <i class="fas fa-chevron-right"></i></button>
+        </div>
+
+        <div class="node-card" onclick="showScreen('screen-node-detail', {type:'myst', id:1})">
+          <div class="node-status-dot online"></div>
+          <div class="node-info">
+            <div class="node-name">MystNode-1 <span class="node-badge myst-badge">MYST</span></div>
+            <div class="node-meta"><i class="fas fa-location-dot"></i> 3.91.192.45 · us-east-1a</div>
+            <div class="node-meta"><i class="fas fa-clock"></i> Uptime: 4d 12h 33m</div>
+          </div>
+          <div class="node-earnings">
+            <div class="node-earn-val">2.91 MYST</div>
+            <div class="node-earn-sub">this week</div>
+          </div>
+          <i class="fas fa-chevron-right node-arrow"></i>
+        </div>
+
+        <div class="node-card" onclick="showScreen('screen-node-detail', {type:'myst', id:2})">
+          <div class="node-status-dot online"></div>
+          <div class="node-info">
+            <div class="node-name">MystNode-2 <span class="node-badge myst-badge">MYST</span></div>
+            <div class="node-meta"><i class="fas fa-location-dot"></i> 54.210.33.17 · us-east-1a</div>
+            <div class="node-meta"><i class="fas fa-clock"></i> Uptime: 4d 11h 08m</div>
+          </div>
+          <div class="node-earnings">
+            <div class="node-earn-val">2.32 MYST</div>
+            <div class="node-earn-sub">this week</div>
+          </div>
+          <i class="fas fa-chevron-right node-arrow"></i>
+        </div>
+
+        <!-- Tailscale Devices -->
+        <div class="section-header">
+          <span><span class="source-dot ts-dot"></span> Tailscale Devices</span>
+          <button class="link-btn" onclick="showScreen('screen-nodes'); setNavById('nav-nodes')">See all <i class="fas fa-chevron-right"></i></button>
+        </div>
+
+        <!-- Tailscale setup banner (shown when no devices) -->
+        <div id="ts-setup-banner" style="display:none">
+          <div class="ts-setup-card" onclick="showScreen('screen-ts-setup')">
+            <div class="ts-setup-icon"><i class="fas fa-shield-halved"></i></div>
+            <div class="ts-setup-body">
+              <div class="ts-setup-title">Connect Tailscale</div>
+              <div class="ts-setup-sub">Tap here for step-by-step setup guide</div>
+            </div>
+            <div class="ts-setup-arrow"><i class="fas fa-chevron-right"></i></div>
+          </div>
+        </div>
+
+        <!-- Tailscale devices injected here -->
+        <div id="ts-devices-dashboard">
+          <div class="ts-loading"><div class="ts-spinner"></div><span>Loading…</span></div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="section-header"><span>Quick Actions</span></div>
+        <div class="action-grid">
+          <button class="action-tile" onclick="showRestartModal()">
+            <i class="fas fa-rotate-right"></i>
+            <span>Restart All</span>
+          </button>
+          <button class="action-tile" onclick="showScreen('screen-earnings'); setNavById('nav-earnings')">
+            <i class="fas fa-chart-bar"></i>
+            <span>Earnings</span>
+          </button>
+          <button class="action-tile" onclick="showScreen('screen-wallet'); setNavById('nav-wallet')">
+            <i class="fas fa-wallet"></i>
+            <span>Wallet</span>
+          </button>
+          <button class="action-tile" onclick="refreshAll()">
+            <i class="fas fa-arrows-rotate"></i>
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="section-header"><span>Recent Activity</span></div>
+        <div class="card mb-24">
+          <div class="activity-item">
+            <div class="activity-icon bg-green"><i class="fas fa-circle-check"></i></div>
+            <div class="activity-body">
+              <div class="activity-title">MystNode-1 online</div>
+              <div class="activity-time">4 days ago</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-icon bg-blue"><i class="fas fa-coins"></i></div>
+            <div class="activity-body">
+              <div class="activity-title">Payout received: 3.50 MYST</div>
+              <div class="activity-time">6 days ago</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-icon bg-teal"><i class="fas fa-shield-halved"></i></div>
+            <div class="activity-body">
+              <div class="activity-title" id="ts-last-activity">Tailscale syncing…</div>
+              <div class="activity-time">just now</div>
+            </div>
+          </div>
+          <div class="activity-item no-border">
+            <div class="activity-icon bg-orange"><i class="fas fa-triangle-exclamation"></i></div>
+            <div class="activity-body">
+              <div class="activity-title">MystNode-2 restarted unexpectedly</div>
+              <div class="activity-time">2 days ago</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========== SCREEN: NODES LIST ========== -->
+    <section class="screen" id="screen-nodes">
+      <header class="topbar">
+        <button class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i></button>
+        <div class="topbar-title-center">All Nodes</div>
+        <button class="icon-btn" onclick="refreshAll()"><i class="fas fa-arrows-rotate"></i></button>
+      </header>
+      <div class="screen-scroll">
+
+        <!-- Source filter -->
+        <div class="node-filter-row" id="nodes-filter-row">
+          <button class="filter-pill active" data-filter="all"    onclick="filterNodes(this,'all')">All</button>
+          <button class="filter-pill"        data-filter="myst"   onclick="filterNodes(this,'myst')"><span class="source-dot myst-dot"></span> Myst</button>
+          <button class="filter-pill"        data-filter="ts"     onclick="filterNodes(this,'ts')"><span class="source-dot ts-dot"></span> Tailscale</button>
+          <button class="filter-pill"        data-filter="online" onclick="filterNodes(this,'online')">Online</button>
+          <button class="filter-pill"        data-filter="offline" onclick="filterNodes(this,'offline')">Offline</button>
+        </div>
+
+        <!-- Myst section -->
+        <div id="nodes-myst-section">
+          <div class="nodes-source-label"><span class="source-dot myst-dot"></span> Myst Nodes (AWS)</div>
+          <div class="node-card" onclick="showScreen('screen-node-detail', {type:'myst', id:1})">
+            <div class="node-status-dot online"></div>
+            <div class="node-info">
+              <div class="node-name">MystNode-1 <span class="node-badge myst-badge">MYST</span></div>
+              <div class="node-meta"><i class="fas fa-server"></i> t3.small · us-east-1a</div>
+              <div class="node-meta"><i class="fas fa-location-dot"></i> 3.91.192.45</div>
+            </div>
+            <div class="node-earnings">
+              <div class="node-earn-val">Online</div>
+              <div class="node-earn-sub">4d 12h</div>
+            </div>
+            <i class="fas fa-chevron-right node-arrow"></i>
+          </div>
+          <div class="node-card" onclick="showScreen('screen-node-detail', {type:'myst', id:2})">
+            <div class="node-status-dot online"></div>
+            <div class="node-info">
+              <div class="node-name">MystNode-2 <span class="node-badge myst-badge">MYST</span></div>
+              <div class="node-meta"><i class="fas fa-server"></i> t3.small · us-east-1a</div>
+              <div class="node-meta"><i class="fas fa-location-dot"></i> 54.210.33.17</div>
+            </div>
+            <div class="node-earnings">
+              <div class="node-earn-val">Online</div>
+              <div class="node-earn-sub">4d 11h</div>
+            </div>
+            <i class="fas fa-chevron-right node-arrow"></i>
+          </div>
+        </div>
+
+        <!-- Tailscale section -->
+        <div id="nodes-ts-section">
+          <div class="nodes-source-label"><span class="source-dot ts-dot"></span> Tailscale Devices</div>
+          <div id="ts-devices-nodes">
+            <div class="ts-loading"><div class="ts-spinner"></div><span>Fetching Tailscale devices…</span></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========== SCREEN: NODE DETAIL ========== -->
+    <section class="screen" id="screen-node-detail">
+      <header class="topbar">
+        <button class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i></button>
+        <div class="topbar-title-center" id="nodeDetailTitle">Node</div>
+        <div class="node-detail-type-badge" id="nodeDetailTypeBadge"></div>
+      </header>
+      <div class="screen-scroll">
+
+        <!-- Status hero -->
+        <div class="node-hero">
+          <div class="node-hero-pulse"></div>
+          <div class="node-hero-icon" id="nodeHeroIcon"><i class="fas fa-server"></i></div>
+          <div class="node-hero-status" id="nodeHeroStatus">ONLINE</div>
+          <div class="node-hero-uptime" id="nodeHeroUptime">Loading…</div>
+        </div>
+
+        <!-- Info Grid -->
+        <div class="info-grid" id="nodeInfoGrid">
+          <!-- filled by JS -->
+        </div>
+
+        <!-- Performance (myst only) -->
+        <div class="card mt-16" id="nodeDetailPerfCard">
+          <div class="card-header"><span class="card-title">Performance</span></div>
+          <div class="perf-row">
+            <div class="perf-item">
+              <div class="perf-label">CPU</div>
+              <div class="perf-bar-wrap"><div class="perf-bar" style="width:28%;background:var(--green)"></div></div>
+              <div class="perf-val">28%</div>
+            </div>
+            <div class="perf-item">
+              <div class="perf-label">RAM</div>
+              <div class="perf-bar-wrap"><div class="perf-bar" style="width:52%;background:var(--blue)"></div></div>
+              <div class="perf-val">52%</div>
+            </div>
+            <div class="perf-item">
+              <div class="perf-label">BW</div>
+              <div class="perf-bar-wrap"><div class="perf-bar" style="width:65%;background:var(--purple)"></div></div>
+              <div class="perf-val">65%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Extra detail card (Tailscale fills this) -->
+        <div id="nodeDetailExtra"></div>
+
+        <!-- Earnings (myst only) -->
+        <div class="card mt-16" id="nodeDetailEarnCard">
+          <div class="card-header"><span class="card-title">Earnings</span></div>
+          <div class="earn-summary-row">
+            <div class="earn-sum-cell">
+              <div class="earn-sum-val" id="nodeEarnToday">—</div>
+              <div class="earn-sum-label">Today</div>
+            </div>
+            <div class="earn-sum-cell">
+              <div class="earn-sum-val" id="nodeEarnWeek">—</div>
+              <div class="earn-sum-label">This Week</div>
+            </div>
+            <div class="earn-sum-cell">
+              <div class="earn-sum-val" id="nodeEarnTotal">—</div>
+              <div class="earn-sum-label">All Time</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="section-header"><span>Controls</span></div>
+        <div class="control-row">
+          <button class="ctrl-btn ctrl-start" onclick="nodeAction('start')">
+            <i class="fas fa-play"></i> Start
+          </button>
+          <button class="ctrl-btn ctrl-stop" onclick="nodeAction('stop')">
+            <i class="fas fa-stop"></i> Stop
+          </button>
+          <button class="ctrl-btn ctrl-restart" onclick="nodeAction('restart')">
+            <i class="fas fa-rotate-right"></i> Restart
+          </button>
+        </div>
+        <button class="ctrl-btn-full ctrl-logs mt-8 mb-24" onclick="showScreen('screen-logs')">
+          <i class="fas fa-terminal"></i> View Logs
+        </button>
+
+      </div>
+    </section>
+
+    <!-- ========== SCREEN: EARNINGS ========== -->
+    <section class="screen" id="screen-earnings">
+      <header class="topbar">
+        <button class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i></button>
+        <div class="topbar-title-center">Earnings</div>
+        <div></div>
+      </header>
+      <div class="screen-scroll">
+        <div class="period-tabs">
+          <button class="period-tab active" onclick="switchPeriod(this,'7d')">7 Days</button>
+          <button class="period-tab" onclick="switchPeriod(this,'30d')">30 Days</button>
+          <button class="period-tab" onclick="switchPeriod(this,'all')">All Time</button>
+        </div>
+        <div class="earn-banner">
+          <div class="earn-banner-label">Total Earnings</div>
+          <div class="earn-banner-val">5.23 MYST</div>
+          <div class="earn-banner-usd">≈ $3.14 USD</div>
+          <div class="earn-banner-delta"><i class="fas fa-arrow-trend-up"></i> +12.4% vs last period</div>
+        </div>
+        <div class="card mt-16">
+          <div class="card-header"><span class="card-title">Daily Breakdown</span></div>
+          <div style="height:200px;position:relative;">
+            <canvas id="earningsDetailChart"></canvas>
+          </div>
+        </div>
+        <div class="section-header"><span>By Node</span></div>
+        <div class="card mb-8">
+          <div class="node-earn-row">
+            <div class="node-earn-dot online"></div>
+            <div class="node-earn-info">
+              <div class="node-earn-name">MystNode-1</div>
+              <div class="node-earn-bar-wrap"><div class="node-earn-bar" style="width:56%"></div></div>
+            </div>
+            <div class="node-earn-right">
+              <div class="node-earn-myst">2.91 MYST</div>
+              <div class="node-earn-pct">56%</div>
+            </div>
+          </div>
+          <div class="node-earn-row no-border">
+            <div class="node-earn-dot online"></div>
+            <div class="node-earn-info">
+              <div class="node-earn-name">MystNode-2</div>
+              <div class="node-earn-bar-wrap"><div class="node-earn-bar" style="width:44%;background:var(--blue)"></div></div>
+            </div>
+            <div class="node-earn-right">
+              <div class="node-earn-myst">2.32 MYST</div>
+              <div class="node-earn-pct">44%</div>
+            </div>
+          </div>
+        </div>
+        <div class="section-header"><span>Recent Sessions</span></div>
+        <div class="card mb-24">
+          <div class="session-item">
+            <div class="session-icon"><i class="fas fa-user-secret"></i></div>
+            <div class="session-body"><div class="session-title">Consumer · DE</div><div class="session-meta">MystNode-1 · 2h 14m · 1.2 GB</div></div>
+            <div class="session-earn">+0.12 MYST</div>
+          </div>
+          <div class="session-item">
+            <div class="session-icon"><i class="fas fa-user-secret"></i></div>
+            <div class="session-body"><div class="session-title">Consumer · UK</div><div class="session-meta">MystNode-2 · 3h 05m · 2.8 GB</div></div>
+            <div class="session-earn">+0.28 MYST</div>
+          </div>
+          <div class="session-item">
+            <div class="session-icon"><i class="fas fa-user-secret"></i></div>
+            <div class="session-body"><div class="session-title">Consumer · US</div><div class="session-meta">MystNode-1 · 1h 48m · 0.9 GB</div></div>
+            <div class="session-earn">+0.09 MYST</div>
+          </div>
+          <div class="session-item no-border">
+            <div class="session-icon"><i class="fas fa-user-secret"></i></div>
+            <div class="session-body"><div class="session-title">Consumer · JP</div><div class="session-meta">MystNode-2 · 4h 22m · 3.4 GB</div></div>
+            <div class="session-earn">+0.34 MYST</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== SCREEN: WALLET ========== -->
+    <section class="screen" id="screen-wallet">
+      <header class="topbar">
+        <button class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i></button>
+        <div class="topbar-title-center">Wallet & Payouts</div>
+        <div></div>
+      </header>
+      <div class="screen-scroll">
+        <div class="wallet-hero">
+          <div class="wallet-hero-label">Available Balance</div>
+          <div class="wallet-hero-val">12.40 MYST</div>
+          <div class="wallet-hero-usd">≈ $7.44 USD</div>
+          <div class="wallet-hero-addr">
+            <i class="fas fa-wallet"></i>
+            <span>0x4A8b…f3D2</span>
+            <button class="copy-btn" onclick="copyAddr()"><i class="fas fa-copy"></i></button>
+          </div>
+          <button class="payout-btn" onclick="showPayoutModal()">
+            <i class="fas fa-paper-plane"></i> Request Payout
+          </button>
+        </div>
+        <div class="wallet-stats">
+          <div class="wallet-stat"><div class="wallet-stat-val">36.80 MYST</div><div class="wallet-stat-label">Total Earned</div></div>
+          <div class="wallet-stat"><div class="wallet-stat-val">24.40 MYST</div><div class="wallet-stat-label">Total Paid Out</div></div>
+          <div class="wallet-stat"><div class="wallet-stat-val">3</div><div class="wallet-stat-label">Payouts</div></div>
+        </div>
+        <div class="section-header"><span>Payout History</span></div>
+        <div class="card">
+          <div class="tx-item"><div class="tx-icon bg-green"><i class="fas fa-arrow-down"></i></div><div class="tx-body"><div class="tx-title">Payout Received</div><div class="tx-meta">Polygon · Dec 14, 2024</div></div><div class="tx-amount text-green">+10.00 MYST</div></div>
+          <div class="tx-item"><div class="tx-icon bg-green"><i class="fas fa-arrow-down"></i></div><div class="tx-body"><div class="tx-title">Payout Received</div><div class="tx-meta">Polygon · Dec 7, 2024</div></div><div class="tx-amount text-green">+8.20 MYST</div></div>
+          <div class="tx-item no-border"><div class="tx-icon bg-green"><i class="fas fa-arrow-down"></i></div><div class="tx-body"><div class="tx-title">Payout Received</div><div class="tx-meta">Polygon · Nov 30, 2024</div></div><div class="tx-amount text-green">+6.20 MYST</div></div>
+        </div>
+        <div class="section-header"><span>Pending Earnings</span></div>
+        <div class="card mb-24">
+          <div class="pending-row"><i class="fas fa-hourglass-half text-orange"></i><span>Pending payout threshold: <strong>10 MYST</strong></span></div>
+          <div class="pending-progress-wrap"><div class="pending-progress-bar" style="width:12.4%"></div></div>
+          <div class="pending-sub">12.40 / 100 MYST to next auto-payout</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== SCREEN: LOGS ========== -->
+    <section class="screen" id="screen-logs">
+      <header class="topbar">
+        <button class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i></button>
+        <div class="topbar-title-center">Node Logs</div>
+        <button class="icon-btn" onclick="clearLogs()"><i class="fas fa-trash"></i></button>
+      </header>
+      <div class="screen-scroll logs-screen">
+        <div class="log-terminal" id="logTerminal"></div>
+      </div>
+    </section>
+
+    <!-- ========== SCREEN: SETTINGS ========== -->
+    <section class="screen" id="screen-settings">
+      <header class="topbar">
+        <button class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i></button>
+        <div class="topbar-title-center">Settings</div>
+        <div></div>
+      </header>
+      <div class="screen-scroll">
+        <div class="settings-section-label">MYST ACCOUNT</div>
+        <div class="card">
+          <div class="settings-row">
+            <div class="settings-row-left"><i class="fas fa-wallet settings-icon"></i> Wallet Address</div>
+            <div class="settings-row-right text-muted">0x4A8b…f3D2</div>
+          </div>
+          <div class="settings-row no-border">
+            <div class="settings-row-left"><i class="fas fa-network-wired settings-icon"></i> Network</div>
+            <div class="settings-row-right text-muted">Polygon</div>
+          </div>
+        </div>
+
+        <div class="settings-section-label">TAILSCALE</div>
+        <div class="card">
+          <div class="settings-row">
+            <div class="settings-row-left"><i class="fas fa-shield-halved settings-icon" style="color:var(--teal)"></i> Tailnet</div>
+            <div class="settings-row-right text-muted" id="settings-tailnet">—</div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-left"><i class="fas fa-server settings-icon" style="color:var(--teal)"></i> Devices</div>
+            <div class="settings-row-right text-muted" id="settings-ts-count">—</div>
+          </div>
+          <div class="settings-row no-border">
+            <div class="settings-row-left"><i class="fas fa-key settings-icon" style="color:var(--teal)"></i> API Key</div>
+            <div class="settings-row-right text-muted">tskey-api-kG84…</div>
+          </div>
+        </div>
+
+        <div class="settings-section-label">AWS NODES</div>
+        <div class="card">
+          <div class="settings-row">
+            <div class="settings-row-left"><i class="fas fa-cloud settings-icon"></i> AWS Region</div>
+            <div class="settings-row-right text-muted">us-east-1</div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-left"><i class="fas fa-server settings-icon"></i> Instance Type</div>
+            <div class="settings-row-right text-muted">t3.small</div>
+          </div>
+          <div class="settings-row no-border">
+            <div class="settings-row-left"><i class="fas fa-shield-halved settings-icon"></i> Auto-restart</div>
+            <div class="settings-row-right"><label class="toggle"><input type="checkbox" checked /><span class="toggle-track"></span></label></div>
+          </div>
+        </div>
+
+        <div class="settings-section-label">NOTIFICATIONS</div>
+        <div class="card">
+          <div class="settings-row">
+            <div class="settings-row-left"><i class="fas fa-bell settings-icon"></i> Node Down Alerts</div>
+            <div class="settings-row-right"><label class="toggle"><input type="checkbox" checked /><span class="toggle-track"></span></label></div>
+          </div>
+          <div class="settings-row no-border">
+            <div class="settings-row-left"><i class="fas fa-coins settings-icon"></i> Payout Alerts</div>
+            <div class="settings-row-right"><label class="toggle"><input type="checkbox" checked /><span class="toggle-track"></span></label></div>
+          </div>
+        </div>
+
+        <div class="settings-section-label">ABOUT</div>
+        <div class="card mb-24">
+          <div class="settings-row">
+            <div class="settings-row-left"><i class="fas fa-code-branch settings-icon"></i> Version</div>
+            <div class="settings-row-right text-muted">1.1.0</div>
+          </div>
+          <div class="settings-row no-border">
+            <div class="settings-row-left"><i class="fas fa-atom settings-icon"></i> NodeManager</div>
+            <div class="settings-row-right text-muted">Myst + Tailscale</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== SCREEN: TAILSCALE SETUP GUIDE ========== -->
+    <section class="screen" id="screen-ts-setup">
+      <header class="topbar">
+        <button class="back-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i></button>
+        <div class="topbar-title-center">Connect Tailscale</div>
+        <div></div>
+      </header>
+      <div class="screen-scroll">
+
+        <!-- Hero -->
+        <div class="ts-guide-hero">
+          <div class="ts-guide-hero-icon"><i class="fas fa-shield-halved"></i></div>
+          <div class="ts-guide-hero-title">3 Easy Steps</div>
+          <div class="ts-guide-hero-sub">Get your Tailscale devices showing in this app</div>
+        </div>
+
+        <!-- Step 1 -->
+        <div class="ts-step-card">
+          <div class="ts-step-num">1</div>
+          <div class="ts-step-body">
+            <div class="ts-step-title">Open a terminal on any device</div>
+            <div class="ts-step-desc">Mac, Linux, Windows (PowerShell), or even your phone's Termux app.</div>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="ts-step-card">
+          <div class="ts-step-num">2</div>
+          <div class="ts-step-body">
+            <div class="ts-step-title">Run this command &amp; copy the output</div>
+            <div class="ts-step-desc">Tap the copy button, paste into your terminal, press Enter, then copy everything that appears.</div>
+            <div class="ts-cmd-box" id="ts-curl-box">
+              <div class="ts-cmd-text" id="ts-curl-text">curl -s "https://api.tailscale.com/api/v2/tailnet/-/devices?fields=all" \
+  -H "Authorization: Bearer tskey-api-kG84DPchWR11CNTRL-8dvBGwp2uQAEJUimnz3LRAufenQZ4iuq"</div>
+              <button class="ts-copy-btn" onclick="copyCurlCommand(this)" title="Copy command">
+                <i class="fas fa-copy"></i>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="ts-cmd-note"><i class="fas fa-windows"></i> Windows PowerShell users: <button class="ts-link-btn" onclick="copyPowerShellCommand()">copy PowerShell version instead</button></div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="ts-step-card" style="margin-bottom:0">
+          <div class="ts-step-num">3</div>
+          <div class="ts-step-body">
+            <div class="ts-step-title">Come back here and paste the result</div>
+            <div class="ts-step-desc">Copy all the JSON text the terminal printed, then tap the button below and paste it in.</div>
+          </div>
+        </div>
+
+        <!-- Paste button -->
+        <button class="ts-big-paste-btn" onclick="goBack(); openModal('modal-ts-sync')">
+          <i class="fas fa-paste"></i>
+          Paste JSON Here
+        </button>
+
+        <!-- Already done? -->
+        <div class="ts-already-done" id="ts-already-done" style="display:none">
+          <div class="ts-done-icon"><i class="fas fa-circle-check"></i></div>
+          <div class="ts-done-text">
+            <div class="ts-done-title">Devices already synced!</div>
+            <div class="ts-done-sub" id="ts-done-count">0 devices loaded</div>
+          </div>
+          <button class="ts-resync-btn" onclick="goBack(); openModal('modal-ts-sync')">Re-sync</button>
+        </div>
+
+        <!-- What you'll see -->
+        <div class="section-header" style="margin-top:24px"><span>What you'll see after importing</span></div>
+        <div class="card mb-24">
+          <div class="ts-preview-row">
+            <div class="node-status-dot online"></div>
+            <div class="ts-preview-info">
+              <div class="ts-preview-name">my-macbook <span class="node-badge ts-badge"><i class="fab fa-apple"></i> TS</span></div>
+              <div class="ts-preview-meta">100.64.0.1 · macOS · Online</div>
+            </div>
+          </div>
+          <div class="ts-preview-row">
+            <div class="node-status-dot online"></div>
+            <div class="ts-preview-info">
+              <div class="ts-preview-name">home-server <span class="node-badge ts-badge"><i class="fab fa-linux"></i> TS</span></div>
+              <div class="ts-preview-meta">100.64.0.2 · Linux · Online</div>
+            </div>
+          </div>
+          <div class="ts-preview-row" style="border-bottom:none;padding-bottom:4px">
+            <div class="node-status-dot offline"></div>
+            <div class="ts-preview-info">
+              <div class="ts-preview-name">iphone <span class="node-badge ts-badge"><i class="fas fa-mobile-screen"></i> TS</span></div>
+              <div class="ts-preview-meta">100.64.0.3 · iOS · Last seen 2h ago</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div><!-- end .app-wrapper -->
+
+  <!-- ===== BOTTOM NAV ===== -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" id="nav-dashboard" onclick="showScreen('screen-dashboard'); setNav(this)">
+      <i class="fas fa-house"></i><span>Home</span>
+    </button>
+    <button class="nav-item" id="nav-nodes" onclick="showScreen('screen-nodes'); setNav(this)">
+      <i class="fas fa-server"></i><span>Nodes</span>
+    </button>
+    <button class="nav-item" id="nav-earnings" onclick="showScreen('screen-earnings'); setNav(this)">
+      <i class="fas fa-chart-bar"></i><span>Earnings</span>
+    </button>
+    <button class="nav-item" id="nav-wallet" onclick="showScreen('screen-wallet'); setNav(this)">
+      <i class="fas fa-wallet"></i><span>Wallet</span>
+    </button>
+  </nav>
+
+  <!-- ===== MODALS ===== -->
+  <div class="modal-overlay" id="modal-restart">
+    <div class="modal">
+      <div class="modal-icon text-orange"><i class="fas fa-rotate-right"></i></div>
+      <div class="modal-title">Restart All Nodes?</div>
+      <div class="modal-body">This will restart all Myst nodes. Active sessions will be disconnected. Tailscale devices are not affected.</div>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" onclick="closeModal('modal-restart')">Cancel</button>
+        <button class="modal-btn-confirm" onclick="confirmRestart()">Restart</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-nodeaction">
+    <div class="modal">
+      <div class="modal-icon" id="modalActionIcon"></div>
+      <div class="modal-title" id="modalActionTitle"></div>
+      <div class="modal-body" id="modalActionBody"></div>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" onclick="closeModal('modal-nodeaction')">Cancel</button>
+        <button class="modal-btn-confirm" id="modalActionConfirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-payout">
+    <div class="modal">
+      <div class="modal-icon text-purple"><i class="fas fa-paper-plane"></i></div>
+      <div class="modal-title">Request Payout</div>
+      <div class="modal-body">
+        <div class="payout-form">
+          <label>Amount (MYST)</label>
+          <input type="number" class="payout-input" value="12.40" />
+          <label>To Address</label>
+          <input type="text" class="payout-input" value="0x4A8b…f3D2" readonly />
+          <div class="payout-fee">Estimated fee: ~0.001 MATIC</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" onclick="closeModal('modal-payout')">Cancel</button>
+        <button class="modal-btn-confirm" onclick="confirmPayout()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TS Paste / Import Modal -->
+  <div class="modal-overlay" id="modal-ts-sync">
+    <div class="modal ts-sync-modal">
+      <div class="modal-icon" style="color:var(--teal)"><i class="fas fa-shield-halved"></i></div>
+      <div class="modal-title">Paste Device JSON</div>
+      <div class="modal-body" style="text-align:left">
+        <p style="color:var(--text-sub);font-size:13px;line-height:1.5;margin-bottom:10px">Paste the JSON you copied from your terminal here:</p>
+        <textarea class="ts-import-textarea" id="ts-import-input" placeholder='{"devices":[{"id":"...","name":"...",...}]}'></textarea>
+        <div class="ts-import-error" id="ts-import-error"></div>
+        <p style="color:var(--text-sub);font-size:11px;margin-top:8px">Don't have it yet? <button class="ts-link-btn" onclick="closeModal('modal-ts-sync');showScreen('screen-ts-setup')">View setup guide →</button></p>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn-cancel" onclick="closeModal('modal-ts-sync')">Cancel</button>
+        <button class="modal-btn-confirm" onclick="confirmTsImport()"><i class="fas fa-upload"></i> Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Copied flash -->
+  <div class="copied-flash" id="copiedFlash">Copied!</div>
+
+  <script src="js/tailscale.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
