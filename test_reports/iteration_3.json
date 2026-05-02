@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 3 testing of new endpoints: live CoinGecko price, Blockscout on-chain withdrawals, bridge agent ingest, bridge install/download helper, Telegram (unconfigured), and frontend integrations. Backend: 9/9 pytest tests passed in /app/backend/tests/test_iter3_new_endpoints.py (1.5s). Verified GET /api/price/myst returns live MYST price ($0.1492, source=coingecko). GET /api/overview now includes myst_price_usd & change pct, and total_earnings_usd ≈ total_earnings_myst * price (within rounding tolerance). GET /api/onchain/withdrawals returns wallet=0xbaa9...6bec, empty withdrawals[], incoming_count=0, polygon_scan_url + blockscout_url + source='blockscout-polygon'. POST /api/ingest/node without header returns 401; with X-Ingest-Secret=mm_ingest_7f3a9c2e5b14d6a8 upserts (idempotent on identity, same id on second call); transitioning online→offline writes a critical alert to db.alerts. GET /api/bridge/install returns ingest_secret, monitor_url, download_url, one-line install with curl+mm-bridge, and full systemd unit. GET /api/bridge/download returns the bridge_agent.py content (text/x-python, contains 'Mystnodes Monitor - Bridge Agent'). GET /api/telegram/status returns configured=false, bot_set=false, chat_set=false. POST /api/telegram/test returns ok=false with reason mentioning TELEGRAM_BOT_TOKEN. Frontend: PriceTicker in header shows live 'MYST $0.1492 -0.24%'. WalletPanel renders with onchain-total-myst=0.00, onchain-total-usd=$0.00, onchain-empty visible. refresh-onchain-btn click works. CLI commands collapsible (2 details/summary). copy-cmd-0 works. BridgeInstallPanel renders below node grid; copy-install-btn visible & clickable, download-bridge-btn href = /api/bridge/download. copy-systemd-btn lives inside collapsed 'SYSTEMD UNIT' <details> (by design). Refresh dashboard, AI Copilot, Profit Optimizer buttons all present. Zero console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter3_new_endpoints.py",
+    "/app/test_reports/pytest/iter3_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 916 lines — exceeds the 700-line guideline. Recommend splitting into modules: routes_ai.py, routes_wallet.py, routes_onchain.py, routes_bridge.py, services/price.py, services/blockscout.py, services/telegram.py.",
+    "_PRICE_CACHE and _WITHDRAW_CACHE are module-level dicts. With multi-worker uvicorn this will produce inconsistent caches and per-worker CoinGecko hits. Use a shared cache (Mongo TTL doc or Redis) when scaling beyond 1 worker.",
+    "_autopilot_loop reads TELEGRAM_BOT_TOKEN at startup-time scope, but it correctly polls each iteration only — fine. However, the loop calls ai_profit_optimizer() which is a route handler (FastAPI dependency object). Calling route functions directly is brittle; extract the optimizer logic into a plain async helper and have both the route and autopilot call it.",
+    "POST /api/ingest/node trusts client-supplied earnings_myst/uptime/etc with no rate limiting and no validation bounds (earnings_myst could be set to 1e9). Add Pydantic Field(ge=0, le=1e6) constraints and per-identity rate limiting for production.",
+    "/api/bridge/install builds base from request.base_url which can include a trailing slash and respects whatever Host header the proxy forwards — verify behind ingress that monitor_url is the public preview URL (it correctly was during testing).",
+    "Bridge agent sends offline ingest with identity='offline-<hostname>' on tequilapi failure — this creates a NEW node entry per offline event for hosts that never came up, polluting the fleet. Should reuse last-known identity or skip the offline POST when no identity is cached.",
+    "PriceTicker formatting renders 'MYST$0.1492-0.24%' with no whitespace between segments in the DOM (visual spacing relies on CSS). Functional, but text content may look cramped on assistive tech / copy-paste.",
+    "Iteration-2 finding still applies: POST /api/settings stores wallet override in db.settings but GET /api/settings ignores it. The DB-backed override is dead code."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter3_new_endpoints.py"],
+  "success_rate": {"backend": "100% (9/9 new + prior suites green)", "frontend": "100%"},
+  "test_credentials": "N/A (no auth). INGEST_SHARED_SECRET=mm_ingest_7f3a9c2e5b14d6a8 used for ingest tests.",
+  "seed_data_creation": "Test created node identity '0xTEST_ingest_iter3_aaaa' (and 1 critical offline alert) during ingest tests; the node was cleaned up post-test via mongosh. Prior 'test-real-01' node from earlier iteration is still in db (per request, that's expected).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New tests: /app/backend/tests/test_iter3_new_endpoints.py (9 tests, ~1.5s, all live, no mocks). Run with: pytest /app/backend/tests/test_iter3_new_endpoints.py -v. Telegram is intentionally unconfigured; do not attempt to set tokens. CoinGecko + Blockscout are public APIs, no keys. New frontend testids verified: price-ticker, wallet-panel, refresh-onchain-btn, onchain-total-myst, onchain-total-usd, onchain-empty, copy-cmd-0..3, bridge-install-panel, copy-install-btn, copy-systemd-btn (inside collapsed details), download-bridge-btn. To clean up test nodes: mongosh test_database --eval 'db.nodes.deleteMany({identity:/^0xTEST_/})'.",
+  "rca of the issue": "N/A — all 16 features in the request work end-to-end."
+}

@@ -11,6 +11,7 @@ import AIChatDrawer from "./AIChatDrawer";
 import NodeDetailModal from "./NodeDetailModal";
 import WalletPanel from "./WalletPanel";
 import ProfitOptimizerModal from "./ProfitOptimizerModal";
+import BridgeInstallPanel from "./BridgeInstallPanel";
 
 export default function Dashboard() {
   const [overview, setOverview] = useState(null);
@@ -94,6 +95,10 @@ export default function Dashboard() {
             </div>
           </div>
           <NodeGrid nodes={nodes} onSelect={setSelectedNode} />
+        </div>
+
+        <div className="mt-10">
+          <BridgeInstallPanel />
         </div>
 
         <footer className="mt-16 pt-6 border-t border-white/5 flex items-center justify-between font-mono text-[11px] text-white/30">

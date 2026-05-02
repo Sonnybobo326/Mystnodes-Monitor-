@@ -1,5 +1,6 @@
 import React from "react";
 import { ArrowsClockwise, Robot, Pulse, Lightning } from "@phosphor-icons/react";
+import PriceTicker from "./PriceTicker";
 
 export default function Header({ onRefresh, onOpenChat, onOpenProfit, refreshing }) {
   return (
@@ -22,6 +23,7 @@ export default function Header({ onRefresh, onOpenChat, onOpenProfit, refreshing
         </div>
 
         <div className="flex items-center gap-2">
+          <PriceTicker />
           <button
             data-testid="refresh-dashboard-btn"
             onClick={onRefresh}

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,6 +6,8 @@ import os
 import logging
 import random
 import uuid
+import asyncio
+import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -26,6 +28,14 @@ MYSTNODES_API_KEY = os.environ.get('MYSTNODES_API_KEY', '')
 PAYOUT_WALLET = os.environ.get('PAYOUT_WALLET', '')
 WITHDRAWAL_THRESHOLD_MYST = float(os.environ.get('WITHDRAWAL_THRESHOLD_MYST', '5'))
 MYST_TOKEN_POLYGON = os.environ.get('MYST_TOKEN_POLYGON', '0x1379E8886A944d2D9d440b3d88DF536Aea08d9F3')
+BLOCKSCOUT_API = os.environ.get('BLOCKSCOUT_API', 'https://polygon.blockscout.com/api')
+COINGECKO_API = os.environ.get('COINGECKO_API', 'https://api.coingecko.com/api/v3')
+INGEST_SHARED_SECRET = os.environ.get('INGEST_SHARED_SECRET', '')
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+
+_PRICE_CACHE: Dict[str, Any] = {"ts": 0, "usd": 0.12, "change_24h": 0.0}
+_WITHDRAW_CACHE: Dict[str, Any] = {"ts": 0, "data": None}
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -205,12 +215,13 @@ async def root():
 
 @api_router.get("/overview")
 async def overview():
+    price = await _get_myst_price()
     nodes = await db.nodes.find({}, {"_id": 0}).to_list(1000)
     active = sum(1 for n in nodes if n["status"] == "online")
     degraded = sum(1 for n in nodes if n["status"] == "degraded")
     offline = sum(1 for n in nodes if n["status"] == "offline")
     total_earnings = round(sum(n["earnings_myst"] for n in nodes), 2)
-    total_usd = round(sum(n["earnings_usd"] for n in nodes), 2)
+    total_usd = round(total_earnings * price["usd"], 2)
     total_bw = round(sum(n["bandwidth_gb"] for n in nodes), 1)
     total_sessions = sum(n["sessions"] for n in nodes)
     avg_uptime = round(sum(n["uptime_pct"] for n in nodes) / max(len(nodes), 1), 2)
@@ -226,6 +237,8 @@ async def overview():
         "total_sessions": total_sessions,
         "avg_uptime_pct": avg_uptime,
         "avg_quality_score": avg_quality,
+        "myst_price_usd": price["usd"],
+        "myst_price_change_24h_pct": price["change_24h"],
     }
 
 
@@ -610,6 +623,280 @@ async def ai_profit_optimizer():
             "uplift_pct": 0,
         }
     return data
+
+
+# ---------- Price / On-chain / Ingest / Telegram / Auto-Pilot ----------
+async def _get_myst_price() -> Dict[str, float]:
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _PRICE_CACHE["ts"] < 300 and _PRICE_CACHE["ts"] > 0:
+        return {"usd": _PRICE_CACHE["usd"], "change_24h": _PRICE_CACHE["change_24h"]}
+    try:
+        async with httpx.AsyncClient(timeout=6) as hc:
+            r = await hc.get(f"{COINGECKO_API}/simple/price",
+                             params={"ids": "mysterium", "vs_currencies": "usd",
+                                     "include_24hr_change": "true"})
+            d = r.json().get("mysterium", {})
+            usd = float(d.get("usd", 0) or 0)
+            change = float(d.get("usd_24h_change", 0) or 0)
+            if usd > 0:
+                _PRICE_CACHE["ts"] = now
+                _PRICE_CACHE["usd"] = usd
+                _PRICE_CACHE["change_24h"] = change
+    except Exception as e:
+        logger.warning(f"CoinGecko price fetch failed: {e}")
+    return {"usd": _PRICE_CACHE["usd"], "change_24h": _PRICE_CACHE["change_24h"]}
+
+
+@api_router.get("/price/myst")
+async def price_myst():
+    p = await _get_myst_price()
+    return {"symbol": "MYST", "usd": p["usd"], "change_24h_pct": p["change_24h"],
+            "source": "coingecko", "cached_ttl_s": 300}
+
+
+async def _fetch_onchain_withdrawals() -> Dict[str, Any]:
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _WITHDRAW_CACHE["ts"] < 60 and _WITHDRAW_CACHE["data"] is not None:
+        return _WITHDRAW_CACHE["data"]
+    if not PAYOUT_WALLET:
+        return {"wallet": "", "withdrawals": [], "total_myst_received": 0.0, "total_usd_received": 0.0}
+    params = {
+        "module": "account", "action": "tokentx",
+        "contractaddress": MYST_TOKEN_POLYGON,
+        "address": PAYOUT_WALLET, "sort": "desc",
+    }
+    wallet_lc = PAYOUT_WALLET.lower()
+    txs: List[Dict[str, Any]] = []
+    try:
+        async with httpx.AsyncClient(timeout=12) as hc:
+            r = await hc.get(BLOCKSCOUT_API, params=params)
+            j = r.json()
+            results = j.get("result", [])
+            if isinstance(results, list):
+                for t in results[:100]:
+                    try:
+                        decimals = int(t.get("tokenDecimal", 18))
+                        amount = int(t.get("value", "0")) / (10 ** decimals)
+                        ts = int(t.get("timeStamp", "0"))
+                        direction = "in" if t.get("to", "").lower() == wallet_lc else "out"
+                        txs.append({
+                            "tx_hash": t.get("hash", ""),
+                            "direction": direction,
+                            "amount_myst": round(amount, 4),
+                            "from": t.get("from", ""),
+                            "to": t.get("to", ""),
+                            "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+                            "block": t.get("blockNumber", ""),
+                        })
+                    except Exception:
+                        continue
+    except Exception as e:
+        logger.warning(f"Blockscout fetch failed: {e}")
+
+    price = await _get_myst_price()
+    total_in = sum(t["amount_myst"] for t in txs if t["direction"] == "in")
+    data = {
+        "wallet": PAYOUT_WALLET,
+        "withdrawals": txs,
+        "incoming_count": sum(1 for t in txs if t["direction"] == "in"),
+        "total_myst_received": round(total_in, 4),
+        "total_usd_received": round(total_in * price["usd"], 2),
+        "myst_price_usd": price["usd"],
+        "polygon_scan_url": f"https://polygonscan.com/token/{MYST_TOKEN_POLYGON}?a={PAYOUT_WALLET}",
+        "blockscout_url": f"https://polygon.blockscout.com/address/{PAYOUT_WALLET}",
+        "source": "blockscout-polygon",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _WITHDRAW_CACHE["ts"] = now
+    _WITHDRAW_CACHE["data"] = data
+    return data
+
+
+@api_router.get("/onchain/withdrawals")
+async def onchain_withdrawals():
+    return await _fetch_onchain_withdrawals()
+
+
+class NodeIngest(BaseModel):
+    identity: str
+    name: Optional[str] = None
+    status: str
+    uptime_pct: float
+    earnings_myst: float
+    bandwidth_gb: float
+    sessions: int
+    ip: Optional[str] = None
+    version: Optional[str] = None
+    country: Optional[str] = None
+    country_code: Optional[str] = None
+    city: Optional[str] = None
+    quality_score: Optional[float] = None
+
+
+@api_router.post("/ingest/node")
+async def ingest_node(payload: NodeIngest, x_ingest_secret: Optional[str] = Header(default=None)):
+    if not INGEST_SHARED_SECRET or x_ingest_secret != INGEST_SHARED_SECRET:
+        raise HTTPException(status_code=401, detail="invalid ingest secret")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    existing = await db.nodes.find_one({"identity": payload.identity}, {"_id": 0})
+    base = existing or {"id": str(uuid.uuid4())}
+    price = await _get_myst_price()
+    update = {
+        "id": base.get("id", str(uuid.uuid4())),
+        "identity": payload.identity,
+        "name": payload.name or base.get("name") or payload.identity[:8],
+        "country": payload.country or base.get("country", "Unknown"),
+        "country_code": payload.country_code or base.get("country_code", "XX"),
+        "city": payload.city or base.get("city", "—"),
+        "status": payload.status,
+        "uptime_pct": float(payload.uptime_pct),
+        "earnings_myst": float(payload.earnings_myst),
+        "earnings_usd": round(float(payload.earnings_myst) * price["usd"], 2),
+        "bandwidth_gb": float(payload.bandwidth_gb),
+        "sessions": int(payload.sessions),
+        "ip": payload.ip or base.get("ip", "0.0.0.0"),
+        "version": payload.version or base.get("version", "unknown"),
+        "quality_score": float(payload.quality_score) if payload.quality_score is not None else base.get("quality_score", 7.0),
+        "last_seen": now_iso,
+        "source": "bridge-agent",
+    }
+    await db.nodes.update_one({"identity": payload.identity}, {"$set": update}, upsert=True)
+
+    prev_status = existing.get("status") if existing else None
+    if prev_status == "online" and payload.status in ("offline", "degraded"):
+        msg = f"Node {update['name']} went {payload.status.upper()}"
+        await db.alerts.insert_one({
+            "id": str(uuid.uuid4()), "node_id": update["id"], "node_name": update["name"],
+            "severity": "critical" if payload.status == "offline" else "warning",
+            "message": msg, "timestamp": now_iso,
+        })
+        await _telegram_send(f"🚨 {msg}")
+    return {"ok": True, "id": update["id"]}
+
+
+async def _telegram_send(text: str) -> bool:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=8) as hc:
+            r = await hc.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+            )
+            return r.status_code == 200
+    except Exception as e:
+        logger.warning(f"Telegram send failed: {e}")
+        return False
+
+
+class TelegramTestBody(BaseModel):
+    message: Optional[str] = None
+
+
+@api_router.get("/telegram/status")
+async def telegram_status():
+    return {
+        "configured": bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID),
+        "bot_set": bool(TELEGRAM_BOT_TOKEN),
+        "chat_set": bool(TELEGRAM_CHAT_ID),
+    }
+
+
+@api_router.post("/telegram/test")
+async def telegram_test(body: TelegramTestBody):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return {"ok": False, "reason": "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set in backend/.env"}
+    ok = await _telegram_send(body.message or "✅ Mystnodes Monitor: Telegram alerts are active.")
+    return {"ok": ok}
+
+
+_AUTOPILOT_TASK: Optional[asyncio.Task] = None
+
+
+async def _autopilot_loop():
+    await asyncio.sleep(30)
+    while True:
+        try:
+            if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+                try:
+                    result = await ai_profit_optimizer()
+                    top = (result.get("actions") or [])[:3]
+                    if top:
+                        headline = result.get("headline", "Top actions to grow MYST")
+                        uplift = result.get("uplift_pct", 0) or 0
+                        lines = [f"⚡ <b>Profit Auto-Pilot</b> · +{uplift:.1f}% uplift potential",
+                                 f"<i>{headline}</i>", ""]
+                        for i, a in enumerate(top, 1):
+                            lines.append(
+                                f"{i}. [{a.get('category')}] {a.get('action')} → +{a.get('expected_myst_delta_monthly', 0):.1f} MYST/mo ({a.get('target_node')})"
+                            )
+                        await _telegram_send("\n".join(lines))
+                except Exception as e:
+                    logger.warning(f"autopilot run failed: {e}")
+                cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+                nodes = await db.nodes.find({}, {"_id": 0}).to_list(1000)
+                for n in nodes:
+                    if n.get("source") != "bridge-agent":
+                        continue
+                    try:
+                        ls = datetime.fromisoformat(n["last_seen"])
+                    except Exception:
+                        continue
+                    if ls < cutoff and n.get("status") != "offline":
+                        await _telegram_send(f"⚠️ {n['name']} heartbeat stale (>15 min) — check node")
+        except Exception as e:
+            logger.exception(f"autopilot loop error: {e}")
+        await asyncio.sleep(6 * 3600)
+
+
+@app.on_event("startup")
+async def _start_autopilot():
+    global _AUTOPILOT_TASK
+    if _AUTOPILOT_TASK is None or _AUTOPILOT_TASK.done():
+        _AUTOPILOT_TASK = asyncio.create_task(_autopilot_loop())
+
+
+# ---------- Bridge install helper (registered BEFORE include_router) ----------
+from fastapi.responses import PlainTextResponse
+from fastapi import Request as _FReq
+
+
+@api_router.get("/bridge/install")
+async def bridge_install(request: _FReq):
+    base = str(request.base_url).rstrip("/")
+    secret = INGEST_SHARED_SECRET or "SET_INGEST_SECRET"
+    download_url = f"{base}/api/bridge/download"
+    install = (
+        f"curl -fsSL {download_url} -o /usr/local/bin/mm-bridge && "
+        f"chmod +x /usr/local/bin/mm-bridge && "
+        f"MONITOR_URL={base} INGEST_SECRET={secret} nohup /usr/local/bin/mm-bridge >/var/log/mm-bridge.log 2>&1 &"
+    )
+    systemd = (
+        f"[Unit]\nDescription=Mystnodes Monitor Bridge\nAfter=network.target\n\n"
+        f"[Service]\nType=simple\n"
+        f"Environment=MONITOR_URL={base}\n"
+        f"Environment=INGEST_SECRET={secret}\n"
+        f"Environment=TEQUILAPI_USER=myst\n"
+        f"Environment=TEQUILAPI_PASS=mystberry\n"
+        f"ExecStart=/usr/local/bin/mm-bridge\nRestart=always\nRestartSec=10\n\n"
+        f"[Install]\nWantedBy=multi-user.target\n"
+    )
+    return {
+        "monitor_url": base,
+        "download_url": download_url,
+        "ingest_secret": secret,
+        "one_line_install": install,
+        "systemd_unit": systemd,
+    }
+
+
+@api_router.get("/bridge/download", response_class=PlainTextResponse)
+async def bridge_download():
+    p = ROOT_DIR / "scripts" / "bridge_agent.py"
+    try:
+        return PlainTextResponse(p.read_text(), media_type="text/x-python")
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"bridge agent not found: {e}")
 
 
 app.include_router(api_router)
