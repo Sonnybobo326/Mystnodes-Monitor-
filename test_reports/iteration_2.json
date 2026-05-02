@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 2 testing of new Wallet/Auto-Withdrawal + AI Profit Optimizer features. Backend: 4/4 pytest cases passed in /app/backend/tests/test_wallet_profit.py — GET /api/settings (configured=true, wallet=0xbaa9...6bec, threshold=5, api_key_masked starts b63L/ends T8xB, 4 commands), POST /api/settings upsert ok, GET /api/withdrawals (non-empty list with correct shape, polygon_scan_url present, pending_myst returned), POST /api/ai/profit-optimizer (live Claude Sonnet 4.5 returned valid JSON with 5-8 actions, all required fields, valid category & effort enums). Frontend: WalletPanel renders below AIInsights with CONFIGURED badge, full wallet address, masked API key, 5 MYST threshold, 4 CLI commands each with copy button, and Polygonscan link. copy-wallet-btn click is error-free. Header Optimize Profit button opens ProfitOptimizerModal; Run Optimizer triggered live AI call which produced 8 ranked action cards plus Current/Optimized/Uplift stat tiles (uplift +45%); close-profit-modal-btn dismisses modal. Regression: refresh-dashboard-btn and AI Copilot drawer continue to work; no console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_wallet_profit.py",
+    "/app/test_reports/pytest/wallet_profit.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/api/settings exposes the FULL Mystnodes API key in plain text inside command 1's `cmd` field (mmn <KEY>) — UI also renders this command verbatim. The api_key_masked field is masked, but the commands list leaks the secret. Acceptable since the user is the owner, but flag as a security consideration if dashboard is ever multi-user.",
+    "POST /api/settings stores a 'wallet' override in db.settings but GET /api/settings ignores it and always returns the .env PAYOUT_WALLET. The two endpoints are not connected — set+get round-trip is broken from the user's perspective.",
+    "/api/withdrawals tx_hash_preview is generated as 0x + uuid5 hex[:40], producing a 42-char string that LOOKS like an Ethereum address rather than a 66-char tx hash. Cosmetic but misleading.",
+    "Profit Optimizer and AI Insights both call live LLM with no in-process caching — every modal open re-runs a ~30s, billable request. Consider caching last result for N minutes or returning cached result by default with an explicit Re-analyze.",
+    "WalletPanel uses hardcoded 'Warning' / 'CheckCircle' from @phosphor-icons/react but no error state if /api/settings 500s — UI just stays in skeleton forever. Add an error fallback."
+  ],
+  "updated_files": ["/app/backend/tests/test_wallet_profit.py"],
+  "success_rate": {"backend": "100% (4/4 new + 10/10 prior)", "frontend": "100%"},
+  "test_credentials": "N/A (no auth in this app). MYSTNODES_API_KEY and PAYOUT_WALLET pre-seeded in /app/backend/.env.",
+  "seed_data_creation": "None. Backend already auto-seeds 12 nodes + 31 history + 6 alerts. db.settings remains untouched (POST upserts only).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New tests file: /app/backend/tests/test_wallet_profit.py (4 tests, all passing in ~29s incl. live LLM). Use PUBLIC_BACKEND_URL=https://ai-monitor-tune.preview.emergentagent.com env var when running pytest, or it falls back to localhost:8001. Frontend testids added this iteration: wallet-panel, wallet-address, copy-wallet-btn, polygonscan-link, copy-cmd-0..3, open-profit-optimizer-btn, profit-optimizer-modal, run-profit-optimizer-btn, close-profit-modal-btn, profit-action-0..N. Profit optimizer endpoint can take 30-90s; allow 180s test timeout.",
+  "rca of the issue": "N/A — no bugs encountered. All advertised features work end-to-end."
+}

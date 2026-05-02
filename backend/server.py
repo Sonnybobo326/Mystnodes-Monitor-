@@ -22,6 +22,10 @@ db = client[os.environ['DB_NAME']]
 
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 AI_MODEL = ("anthropic", "claude-sonnet-4-5-20250929")
+MYSTNODES_API_KEY = os.environ.get('MYSTNODES_API_KEY', '')
+PAYOUT_WALLET = os.environ.get('PAYOUT_WALLET', '')
+WITHDRAWAL_THRESHOLD_MYST = float(os.environ.get('WITHDRAWAL_THRESHOLD_MYST', '5'))
+MYST_TOKEN_POLYGON = os.environ.get('MYST_TOKEN_POLYGON', '0x1379E8886A944d2D9d440b3d88DF536Aea08d9F3')
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -460,6 +464,152 @@ async def ai_forecast(days: int = 7):
             except Exception:
                 pass
         return {"forecast": [], "summary": cleaned[:300]}
+
+
+# ---------- Wallet / Auto-Withdrawal / Profit Optimizer ----------
+def _mask_key(k: str) -> str:
+    if not k:
+        return ""
+    if len(k) <= 8:
+        return "*" * len(k)
+    return k[:4] + "•" * (len(k) - 8) + k[-4:]
+
+
+@api_router.get("/settings")
+async def get_settings():
+    """Returns wallet config + the exact CLI commands to configure each node for auto-withdrawal."""
+    configured = bool(MYSTNODES_API_KEY and PAYOUT_WALLET)
+    commands = []
+    if configured:
+        commands = [
+            {
+                "label": "1. Claim node on mystnodes.com (run once per node)",
+                "cmd": f"mmn {MYSTNODES_API_KEY}",
+            },
+            {
+                "label": "2. Set Polygon MYST payout wallet as beneficiary (enables auto-withdrawal at threshold)",
+                "cmd": f"myst cli identities beneficiary-set {PAYOUT_WALLET}",
+            },
+            {
+                "label": "3. (Optional) Force-settle current earnings now",
+                "cmd": "myst cli identities settle",
+            },
+            {
+                "label": "4. Verify configuration",
+                "cmd": "myst cli identities get",
+            },
+        ]
+    return {
+        "configured": configured,
+        "wallet": PAYOUT_WALLET,
+        "wallet_short": (PAYOUT_WALLET[:6] + "…" + PAYOUT_WALLET[-4:]) if PAYOUT_WALLET else "",
+        "api_key_masked": _mask_key(MYSTNODES_API_KEY),
+        "threshold_myst": WITHDRAWAL_THRESHOLD_MYST,
+        "polygon_scan_url": f"https://polygonscan.com/token/{MYST_TOKEN_POLYGON}?a={PAYOUT_WALLET}" if PAYOUT_WALLET else "",
+        "myst_contract": MYST_TOKEN_POLYGON,
+        "commands": commands,
+        "notes": [
+            "Mystnodes has no cloud REST API — the dashboard key is used on each node via the Mysterium CLI.",
+            "Auto-withdrawal is configured per-node: once you run the beneficiary-set command above, earnings settle automatically to your Polygon wallet when balance ≥ threshold (default ~5 MYST).",
+            "Live on-chain withdrawal history is viewable on Polygonscan via the link above.",
+        ],
+    }
+
+
+class WithdrawalSettingsUpdate(BaseModel):
+    wallet: Optional[str] = None
+    threshold_myst: Optional[float] = None
+
+
+@api_router.post("/settings")
+async def update_settings(update: WithdrawalSettingsUpdate):
+    """Store optional overrides in DB (does not modify .env). Returns effective settings."""
+    doc = await db.settings.find_one({"_id": "singleton"}) or {"_id": "singleton"}
+    if update.wallet is not None:
+        doc["wallet"] = update.wallet
+    if update.threshold_myst is not None:
+        doc["threshold_myst"] = float(update.threshold_myst)
+    await db.settings.update_one({"_id": "singleton"}, {"$set": doc}, upsert=True)
+    return {"ok": True, "wallet": doc.get("wallet", PAYOUT_WALLET), "threshold_myst": doc.get("threshold_myst", WITHDRAWAL_THRESHOLD_MYST)}
+
+
+@api_router.get("/withdrawals")
+async def withdrawals():
+    """Returns deterministic simulated withdrawal history for the configured wallet, plus a deep-link to Polygonscan for the real on-chain record."""
+    if not PAYOUT_WALLET:
+        return {"wallet": "", "withdrawals": [], "polygon_scan_url": ""}
+    # Derive realistic-looking entries from fleet history (demo) — real data is at Polygonscan
+    hist = await db.history.find({}, {"_id": 0}).sort("date", 1).to_list(1000)
+    withdrawals = []
+    bucket = 0.0
+    for h in hist:
+        bucket += h["earnings_myst"] * 0.12  # only fleet-net portion simulated
+        if bucket >= WITHDRAWAL_THRESHOLD_MYST:
+            withdrawals.append({
+                "date": h["date"],
+                "amount_myst": round(bucket, 3),
+                "tx_hash_preview": "0x" + uuid.uuid5(uuid.NAMESPACE_DNS, h["date"] + PAYOUT_WALLET).hex[:40],
+                "status": "settled",
+            })
+            bucket = 0.0
+    return {
+        "wallet": PAYOUT_WALLET,
+        "threshold_myst": WITHDRAWAL_THRESHOLD_MYST,
+        "withdrawals": withdrawals[-12:],
+        "pending_myst": round(bucket, 3),
+        "polygon_scan_url": f"https://polygonscan.com/token/{MYST_TOKEN_POLYGON}?a={PAYOUT_WALLET}",
+        "note": "Simulated from fleet history for UI preview. Real withdrawals are visible on Polygonscan (link above).",
+    }
+
+
+@api_router.post("/ai/profit-optimizer")
+async def ai_profit_optimizer():
+    """Runs Claude against full fleet data and returns a ranked, actionable profit playbook."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    context = await _get_context_text()
+    system_message = (
+        "You are PROFIT-OPS, a Mysterium Network fleet optimization engine. Output STRICTLY a JSON object "
+        "(no markdown, no fences) with this schema:\n"
+        '{"estimated_current_monthly_myst": number, "estimated_optimized_monthly_myst": number, '
+        '"uplift_pct": number, "headline": "1 sentence takeaway", '
+        '"actions": [{"priority": 1-5, "category": "RESTART|RELOCATE|PRICING|HARDWARE|NETWORK|SETTLEMENT", '
+        '"target_node": "node name or FLEET", "action": "imperative verb phrase", '
+        '"rationale": "1-2 sentence technical reasoning", '
+        '"expected_myst_delta_monthly": number, "effort": "LOW|MEDIUM|HIGH"}]}\n\n'
+        "Rules: Produce 5-8 concrete actions ordered by priority (1 = highest ROI). Focus on: "
+        "offline/degraded nodes (restart/relocate), low-quality-score nodes, geographic rebalancing, "
+        "uptime anomalies, settlement timing, pricing on over/under-utilized nodes. Reference nodes "
+        "by their exact names from the data. Numbers must be realistic estimates."
+    )
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"profit-{uuid.uuid4()}",
+        system_message=system_message,
+    ).with_model(AI_MODEL[0], AI_MODEL[1])
+
+    try:
+        raw = await chat.send_message(UserMessage(text=f"Analyze this fleet and produce the profit playbook.\n\n{context}"))
+    except Exception as e:
+        logger.exception("profit optimizer error")
+        raise HTTPException(status_code=502, detail=f"LLM error: {e}")
+
+    import json as _json
+    import re as _re
+    cleaned = _re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=_re.MULTILINE).strip()
+    try:
+        data = _json.loads(cleaned)
+    except Exception:
+        m = _re.search(r"\{[\s\S]*\}", cleaned)
+        data = _json.loads(m.group(0)) if m else {
+            "headline": cleaned[:300],
+            "actions": [],
+            "estimated_current_monthly_myst": 0,
+            "estimated_optimized_monthly_myst": 0,
+            "uplift_pct": 0,
+        }
+    return data
 
 
 app.include_router(api_router)

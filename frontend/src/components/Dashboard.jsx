@@ -9,6 +9,8 @@ import AIInsights from "./AIInsights";
 import AlertsFeed from "./AlertsFeed";
 import AIChatDrawer from "./AIChatDrawer";
 import NodeDetailModal from "./NodeDetailModal";
+import WalletPanel from "./WalletPanel";
+import ProfitOptimizerModal from "./ProfitOptimizerModal";
 
 export default function Dashboard() {
   const [overview, setOverview] = useState(null);
@@ -19,6 +21,7 @@ export default function Dashboard() {
   const [chatOpen, setChatOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [profitOpen, setProfitOpen] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -56,6 +59,7 @@ export default function Dashboard() {
       <Header
         onRefresh={handleRefresh}
         onOpenChat={() => setChatOpen(true)}
+        onOpenProfit={() => setProfitOpen(true)}
         refreshing={refreshing}
       />
 
@@ -73,6 +77,7 @@ export default function Dashboard() {
           </div>
           <div className="space-y-4 md:space-y-6">
             <AIInsights />
+            <WalletPanel />
             <AlertsFeed alerts={alerts} />
           </div>
         </div>
@@ -101,6 +106,7 @@ export default function Dashboard() {
       {selectedNode && (
         <NodeDetailModal nodeId={selectedNode} onClose={() => setSelectedNode(null)} />
       )}
+      {profitOpen && <ProfitOptimizerModal onClose={() => setProfitOpen(false)} />}
     </div>
   );
 }
