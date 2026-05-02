@@ -1,0 +1,107 @@
+{
+  "theme": "dark",
+  "archetype": "7 (Electric & Neon) - Terminal Retro-Futurism Variant",
+  "typography": {
+    "fonts": {
+      "headings": "Clash Display",
+      "body": "Satoshi",
+      "monospace": "JetBrains Mono"
+    },
+    "import_url": "https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@400,500,700&display=swap",
+    "rules": {
+      "headings": "font-['Clash_Display'] font-semibold tracking-tight",
+      "body": "font-['Satoshi'] font-normal leading-relaxed text-white/80",
+      "data": "font-['JetBrains_Mono'] tracking-tight text-white",
+      "general": "Never use Inter. All numeric data, metrics, node statuses, and IPs MUST use JetBrains Mono to reinforce the technical web3/crypto terminal aesthetic."
+    }
+  },
+  "colors": {
+    "background": {
+      "app": "#0A0B0E",
+      "surface": "#111318",
+      "surface_hover": "#1A1D24",
+      "surface_active": "#1F232B"
+    },
+    "brand": {
+      "primary": "#ccff00",
+      "primary_muted": "rgba(204, 255, 0, 0.15)",
+      "cyan": "#00F0FF",
+      "cyan_muted": "rgba(0, 240, 255, 0.15)"
+    },
+    "status": {
+      "online": "#ccff00",
+      "offline": "#FF3366",
+      "degraded": "#FFB000"
+    },
+    "text": {
+      "main": "#FFFFFF",
+      "muted": "rgba(255, 255, 255, 0.5)",
+      "inverse": "#000000"
+    },
+    "border": {
+      "default": "rgba(255, 255, 255, 0.08)",
+      "focus": "#ccff00",
+      "glow": "rgba(204, 255, 0, 0.3)"
+    },
+    "rules": "Avoid pure black (#000000) or pure grays. Everything is tinted slightly cool (obsidian). Neon lime (#ccff00) is the dominant accent, used sparingly for maximum impact."
+  },
+  "layout": {
+    "strategy": "Mode B (Control Room Grid)",
+    "container_padding": "p-4 sm:p-6 md:p-8 lg:p-10",
+    "gap": "gap-4 md:gap-6",
+    "corners": "rounded-sm",
+    "rules": "High density, strict grid hierarchy. Every pixel must be utilized. Use 'border-collapse' style or tight gaps. Avoid large border-radii; keep it sharp to match the terminal aesthetic."
+  },
+  "surface_strategies": {
+    "dashboard_cards": "Grid Borders (Technical Look). Flat background, 1px subtle border (border-white/10), zero shadow. Hover state: slight -translate-y-px and border darkens or glows.",
+    "ai_assistant_panel": "The 'Tracing Beam' Look. A side drawer or floating panel with an active 1px neon border that signifies 'Alive' AI processing.",
+    "modals": "Crystal Glassmorphism. backdrop-blur-2xl bg-black/60 with a 1px solid border-white/10."
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#ccff00] text-black font-['JetBrains_Mono'] uppercase text-xs tracking-widest hover:bg-[#b3e600] transition-colors rounded-sm px-4 py-2",
+      "secondary": "bg-transparent border border-white/10 text-white/90 font-['JetBrains_Mono'] uppercase text-xs hover:border-[#ccff00]/50 transition-colors rounded-sm px-4 py-2"
+    },
+    "charts": {
+      "style": "Recharts with transparent backgrounds, #ccff00 for primary stroke, #00F0FF for secondary. Use linear gradients for area fills (neon to transparent). Grid lines should be very faint (white/5)."
+    },
+    "status_indicator": {
+      "html": "<span className=\"relative flex h-2.5 w-2.5\"><span className=\"animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ccff00] opacity-75\"></span><span className=\"relative inline-flex rounded-full h-2.5 w-2.5 bg-[#ccff00]\"></span></span>"
+    },
+    "ai_insights": {
+      "style": "Subtle #ccff00/10 background, 1px border-[#ccff00]/30, monospace type for anomaly readouts."
+    }
+  },
+  "motion": {
+    "hover": "Explicit text color changes + border color shifts. No bouncy physics.",
+    "transitions": "transition-all duration-200 ease-out",
+    "animations": "Use subtle pulsing for active/online states. The AI assistant typing should mimic terminal text streaming."
+  },
+  "testing": {
+    "requirements": "ALL interactive and key informational elements MUST include a `data-testid` attribute. Convention: kebab-case, role-based. e.g., data-testid='refresh-dashboard-btn', data-testid='node-row-1'."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "texture_overlay",
+        "url": "https://images.unsplash.com/photo-1624421514201-db391243ed51?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwyfHxkYXJrJTIwYWJzdHJhY3QlMjBuZXR3b3JrJTIwbm9kZXN8ZW58MHx8fHwxNzc3NzYwODgxfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Use as a fixed background overlay with opacity-5 and mix-blend-screen or overlay to give the app a subtle digital noise/grain texture."
+      }
+    ],
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "weight": "regular or duotone",
+      "install_command": "yarn add @phosphor-icons/react"
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. Inject the Fontshare import URL into index.css and configure Tailwind theme to support 'Clash Display', 'Satoshi', and 'JetBrains Mono'.",
+    "2. Build a high-density, sharp-edged dashboard (no generic rounded cards). Use flat #111318 surfaces with 1px white/10 borders.",
+    "3. Apply JetBrains Mono strictly to all numbers, node IPs, uptime %, and MYST earnings.",
+    "4. Use the pulsing neon dot HTML snippet for 'Online' node status. Use static red/amber dots for offline/degraded.",
+    "5. The AI Assistant should be designed as a technical copilot. Place it in a right-panel drawer or persistent sidebar. Give it terminal-style chat bubbles.",
+    "6. Do NOT use Shadcn's default heavy drop-shadows. This design is flat and border-driven.",
+    "7. Implement all requested functionalities: Overview metrics, Node Grid/List, Earnings Chart, Bandwidth Chart, AI panel, AI Insights card.",
+    "8. Ensure EVERY interactive element has a `data-testid`."
+  ]
+}
