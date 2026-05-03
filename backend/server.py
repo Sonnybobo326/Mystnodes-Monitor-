@@ -1,9 +1,10 @@
 """
 Mining Rig Profitability backend.
 
-Exposes endpoints to fetch live mining-coin prices (CoinGecko + NodeReal),
-the mining rig catalog with per-rig profitability calculations, and a
-custom calculator. Profitability filters out unprofitable rigs by default.
+Exposes endpoints to fetch live mining-coin prices (CoinPaprika), the
+mining rig catalog with per-rig profitability calculations, and a custom
+calculator. NodeReal RPC is used to enrich the dashboard with the latest
+BSC block number. Profitability filters out unprofitable rigs by default.
 """
 
 import os
