@@ -1,0 +1,123 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "typography": {
+    "fonts": {
+      "headings": "Manrope",
+      "body": "IBM Plex Sans",
+      "data_numbers": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter text-slate-900 leading-none",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight",
+      "h3": "text-xl sm:text-2xl font-semibold tracking-tight text-slate-800",
+      "h4": "text-lg font-bold tracking-tight text-slate-800",
+      "body": "text-base font-normal text-slate-600 leading-relaxed font-sans",
+      "small_label": "text-xs font-bold uppercase tracking-[0.2em] text-slate-500",
+      "data_large": "text-3xl sm:text-4xl font-bold font-mono text-emerald-600 tracking-tight",
+      "data_medium": "text-xl font-semibold font-mono text-slate-900",
+      "data_small": "text-sm font-medium font-mono text-slate-600"
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "bg-white",
+      "secondary": "bg-slate-50",
+      "tertiary": "bg-slate-100"
+    },
+    "text": {
+      "primary": "text-slate-900",
+      "secondary": "text-slate-600",
+      "tertiary": "text-slate-500",
+      "accent": "text-emerald-700",
+      "danger": "text-red-600",
+      "on_accent": "text-white"
+    },
+    "border": {
+      "default": "border-slate-200",
+      "focus": "border-slate-900",
+      "accent": "border-emerald-600"
+    },
+    "surface": {
+      "card": "bg-white border-b border-r border-slate-200 p-6 flex flex-col gap-4",
+      "header_glass": "bg-white/90 backdrop-blur-xl border-b border-slate-200 backdrop-saturate-150",
+      "widget": "bg-slate-50 border border-slate-200"
+    },
+    "chart": {
+      "profit": "#10B981",
+      "power": "#F59E0B",
+      "hashrate": "#3B82F6",
+      "grid": "#E2E8F0"
+    }
+  },
+  "spacing_and_layout": {
+    "general": {
+      "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+      "section_gap": "py-12 sm:py-16 lg:py-24",
+      "element_gap": "gap-4 sm:gap-6",
+      "radius": "rounded-none"
+    },
+    "grids": {
+      "control_room": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4",
+      "bento_dense": "grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-4",
+      "table_layout": "w-full text-left border-collapse"
+    }
+  },
+  "components": {
+    "button": {
+      "primary": "bg-slate-900 text-white hover:bg-slate-800 hover:text-white transition-colors duration-200 px-6 py-3 font-bold text-sm uppercase tracking-wider",
+      "secondary": "bg-white text-slate-900 border border-slate-300 hover:border-slate-900 hover:bg-slate-50 transition-colors duration-200 px-6 py-3 font-bold text-sm uppercase tracking-wider",
+      "accent": "bg-emerald-600 text-white hover:bg-emerald-700 transition-colors duration-200 px-6 py-3 font-bold text-sm uppercase tracking-wider"
+    },
+    "card": {
+      "container": "bg-white border-b border-r border-slate-200 p-6 flex flex-col gap-4",
+      "hover_effect": "hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,0.1)] transition-all duration-200"
+    },
+    "table": {
+      "container": "w-full overflow-x-auto border border-slate-200 bg-white",
+      "header_cell": "px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-600 text-left",
+      "body_row": "border-b border-slate-200 hover:bg-slate-50 transition-colors",
+      "body_cell": "px-4 py-3 text-sm font-mono text-slate-900"
+    },
+    "input": {
+      "text": "w-full bg-white border border-slate-300 px-4 py-2 font-mono text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900",
+      "label": "block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2"
+    },
+    "slider": {
+      "track": "h-2 bg-slate-200 w-full",
+      "thumb": "h-4 w-4 bg-slate-900 border-2 border-white rounded-none cursor-pointer",
+      "value_display": "font-mono font-bold text-emerald-600"
+    }
+  },
+  "micro_themes": {
+    "grid_borders": "Container uses border-collapse layout. Items have border-r border-b border-slate-200 to create a technical/exposed grid look.",
+    "neumorphism": "None. Strict flat design.",
+    "glassmorphism": "Used only for the sticky top navigation header (bg-white/90 backdrop-blur-xl border-b border-slate-200)."
+  },
+  "animations": {
+    "hover_state": "transition-transform duration-200 ease-out hover:-translate-y-1",
+    "chart_entrance": "opacity-0 animate-fade-in-up",
+    "number_ticker": "transition-colors duration-300"
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "usage": "Use Phosphor Icons (Regular or Bold weight) for dense dashboard UI. Ensure icons have explicit text context or tooltips."
+  },
+  "images": {
+    "hero": null,
+    "background": null,
+    "logos": []
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to Archetype 4 (Swiss & High-Contrast) with the Light Theme.",
+    "All cards, buttons, and inputs MUST have rounded-none (0px border radius) to maintain the brutalist/technical aesthetic.",
+    "The F-pattern layout should be used for the dashboard: KPI cards on top, charts below, lists/tables on the bottom or side.",
+    "Data heavy elements MUST use 'JetBrains Mono' font. Tickers, prices, hashrates, and ROI percentages must be displayed in monospace.",
+    "All components must be flat with solid borders. Apply the hover shadow effect explicitly as defined in the card component (4px solid shadow offset).",
+    "Use Shadcn UI components for dropdowns, sliders, and tables, but override their border-radius to 0 and remove soft shadows.",
+    "Only show profitable rigs. Hardcode the logic or API filter to remove any rig with negative daily profit.",
+    "Every interactive element MUST include a 'data-testid' attribute (e.g., data-testid='profitability-slider', data-testid='rig-card-buy-btn').",
+    "Use Recharts for the profit breakdown chart. Ensure it uses the sharp colors defined in colors.chart.",
+    "Install icon library: yarn add @phosphor-icons/react"
+  ]
+}
