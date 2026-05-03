@@ -6,6 +6,7 @@ import Rigs from "./pages/Rigs";
 import RigDetail from "./pages/RigDetail";
 import Calculator from "./pages/Calculator";
 import Coins from "./pages/Coins";
+import Nodes from "./pages/Nodes";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="/rig/:id" element={<RigDetail />} />
           <Route path="/calculator" element={<Calculator />} />
           <Route path="/coins" element={<Coins />} />
+          <Route path="/nodes" element={<Nodes />} />
         </Routes>
       </BrowserRouter>
     </div>

@@ -1,34 +1,40 @@
-import { CurrencyBtc, TrendUp, ChartLineUp, Cpu, Lightning } from "@phosphor-icons/react";
+import { CurrencyBtc, TrendUp, ChartLineUp, Cpu, Lightning, Pulse } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import { fmtUsd, fmtPct, fmtNum } from "../lib/api";
 
-const Cell = ({ label, value, sub, icon, accent, testid }) => (
-  <div
-    className="bg-white border-r border-b border-slate-200 p-6 flex flex-col gap-3 hover-shadow"
-    data-testid={testid}
-  >
-    <div className="flex items-center justify-between">
-      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-        {label}
-      </span>
-      <div className="text-slate-300">{icon}</div>
-    </div>
-    <div
-      className={`text-3xl sm:text-4xl font-bold font-mono tracking-tight ${
-        accent || "text-slate-900"
-      }`}
+const Cell = ({ label, value, sub, icon, accent, testid, to }) => {
+  const Wrap = to ? Link : "div";
+  const wrapProps = to ? { to } : {};
+  return (
+    <Wrap
+      {...wrapProps}
+      className="bg-white border-r border-b border-slate-200 p-6 flex flex-col gap-3 hover-shadow"
+      data-testid={testid}
     >
-      {value}
-    </div>
-    {sub && <div className="text-xs font-mono text-slate-500">{sub}</div>}
-  </div>
-);
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+          {label}
+        </span>
+        <div className="text-slate-300">{icon}</div>
+      </div>
+      <div
+        className={`text-3xl sm:text-4xl font-bold font-mono tracking-tight ${
+          accent || "text-slate-900"
+        }`}
+      >
+        {value}
+      </div>
+      {sub && <div className="text-xs font-mono text-slate-500">{sub}</div>}
+    </Wrap>
+  );
+};
 
 export const KpiStrip = ({ stats }) => {
   if (!stats) return null;
   const btcUp = (stats.btc_change_24h ?? 0) >= 0;
   return (
     <section
-      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 border-l border-t border-slate-200"
+      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 border-l border-t border-slate-200"
       data-testid="kpi-strip"
     >
       <Cell
@@ -68,6 +74,18 @@ export const KpiStrip = ({ stats }) => {
         }
         icon={<Cpu size={20} weight="bold" />}
         testid="kpi-profitable"
+      />
+      <Cell
+        label="Live Chains"
+        value={`${stats.nodes_online ?? 0}/${stats.nodes_total ?? 0}`}
+        sub={
+          <span className="text-emerald-600 font-bold">
+            BSC #{stats.bsc_block_number ? stats.bsc_block_number.toLocaleString() : "—"}
+          </span>
+        }
+        icon={<Pulse size={20} weight="bold" />}
+        testid="kpi-nodes"
+        to="/nodes"
       />
     </section>
   );

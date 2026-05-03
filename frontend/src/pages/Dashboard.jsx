@@ -206,21 +206,27 @@ export default function Dashboard() {
       </section>
 
       {/* Footer note */}
-      <footer className="border-t border-slate-200 mt-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid sm:grid-cols-3 gap-6">
+      <footer className="border-t border-slate-200 mt-10 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid sm:grid-cols-3 gap-6">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500 mb-2">
               Data Sources
             </div>
-            <div className="text-sm text-slate-700 font-mono">
-              CoinGecko Public API · NodeReal BSC RPC
+            <div className="text-sm text-slate-700 font-mono leading-relaxed">
+              CoinPaprika · <span className="text-emerald-700 font-bold">NodeReal RPC</span>
+              <br />
+              <span className="text-xs text-slate-500">
+                Multi-chain block data: BSC, ETH, opBNB, Arbitrum, Base
+              </span>
             </div>
           </div>
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500 mb-2">
               Updated
             </div>
-            <div className="text-sm text-slate-700 font-mono">Every 60s · Cached</div>
+            <div className="text-sm text-slate-700 font-mono">
+              Prices: 60s · Nodes: 15s
+            </div>
           </div>
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500 mb-2">

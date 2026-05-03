@@ -1,10 +1,14 @@
 """
 Mining Rig Profitability backend.
 
-Exposes endpoints to fetch live mining-coin prices (CoinPaprika), the
-mining rig catalog with per-rig profitability calculations, and a custom
-calculator. NodeReal RPC is used to enrich the dashboard with the latest
-BSC block number. Profitability filters out unprofitable rigs by default.
+Live data sources:
+  - CoinPaprika (no key): mining-coin prices, market cap, 24h change
+  - NodeReal (API key): multi-chain RPC (BSC, ETH, Polygon, opBNB, Arbitrum, Base)
+    used for node status grid (block height + gas price) and wallet balance lookups
+
+Endpoints expose the mining rig catalog with per-rig profitability calculations,
+a custom calculator, KPIs, live nodes, and address balance look-ups.
+Profitability filters out unprofitable rigs by default.
 """
 
 import os
@@ -136,6 +140,155 @@ async def fetch_bsc_block_number() -> Optional[int]:
     except Exception as exc:
         logger.warning("NodeReal fetch failed: %s", exc)
         return None
+
+
+# ---------------------------------------------------------------------------
+# NodeReal multi-chain RPC layer
+# ---------------------------------------------------------------------------
+NODEREAL_CHAINS = {
+    "bsc": {
+        "name": "BNB Smart Chain",
+        "symbol": "BNB",
+        "url_tpl": "https://bsc-mainnet.nodereal.io/v1/{key}",
+        "decimals": 18,
+        "explorer": "https://bscscan.com",
+        "block_time": 3.0,
+    },
+    "eth": {
+        "name": "Ethereum",
+        "symbol": "ETH",
+        "url_tpl": "https://eth-mainnet.nodereal.io/v1/{key}",
+        "decimals": 18,
+        "explorer": "https://etherscan.io",
+        "block_time": 12.0,
+    },
+    "opbnb": {
+        "name": "opBNB",
+        "symbol": "BNB",
+        "url_tpl": "https://opbnb-mainnet.nodereal.io/v1/{key}",
+        "decimals": 18,
+        "explorer": "https://opbnbscan.com",
+        "block_time": 1.0,
+    },
+    "arbitrum": {
+        "name": "Arbitrum One",
+        "symbol": "ETH",
+        "url_tpl": "https://open-platform.nodereal.io/{key}/arbitrum-nitro/",
+        "decimals": 18,
+        "explorer": "https://arbiscan.io",
+        "block_time": 0.25,
+    },
+    "base": {
+        "name": "Base",
+        "symbol": "ETH",
+        "url_tpl": "https://open-platform.nodereal.io/{key}/base/",
+        "decimals": 18,
+        "explorer": "https://basescan.org",
+        "block_time": 2.0,
+    },
+}
+
+_node_cache: dict = {"data": None, "ts": 0.0}
+NODE_TTL = 15  # seconds — keep nodes feeling live
+
+
+def _chain_url(chain: str) -> Optional[str]:
+    if not NODEREAL_API_KEY or chain not in NODEREAL_CHAINS:
+        return None
+    return NODEREAL_CHAINS[chain]["url_tpl"].format(key=NODEREAL_API_KEY)
+
+
+async def _rpc_call(cli: httpx.AsyncClient, chain: str, method: str, params: list):
+    """Single JSON-RPC call (some NodeReal endpoints don't honour batch)."""
+    url = _chain_url(chain)
+    if not url:
+        return None
+    try:
+        r = await cli.post(
+            url,
+            json={"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
+        )
+        r.raise_for_status()
+        return r.json().get("result")
+    except Exception as exc:
+        logger.warning("NodeReal %s.%s failed: %s", chain, method, exc)
+        return None
+
+
+async def _fetch_chain_status(cli: httpx.AsyncClient, chain: str) -> dict:
+    import asyncio
+
+    meta = NODEREAL_CHAINS[chain]
+    block_hex, gas_hex, chain_id_hex = await asyncio.gather(
+        _rpc_call(cli, chain, "eth_blockNumber", []),
+        _rpc_call(cli, chain, "eth_gasPrice", []),
+        _rpc_call(cli, chain, "eth_chainId", []),
+    )
+    return {
+        "id": chain,
+        "name": meta["name"],
+        "symbol": meta["symbol"],
+        "online": block_hex is not None,
+        "block_number": int(block_hex, 16) if block_hex else None,
+        "gas_price_gwei": (int(gas_hex, 16) / 1e9) if gas_hex else None,
+        "chain_id": int(chain_id_hex, 16) if chain_id_hex else None,
+        "block_time_s": meta["block_time"],
+        "explorer": meta["explorer"],
+    }
+
+
+async def fetch_all_node_statuses() -> list:
+    """Return live status for every supported NodeReal chain (cached briefly)."""
+    import asyncio
+
+    now = time.time()
+    if _node_cache["data"] and now - _node_cache["ts"] < NODE_TTL:
+        return _node_cache["data"]
+
+    if not NODEREAL_API_KEY:
+        return []
+
+    async with httpx.AsyncClient(timeout=8) as cli:
+        results = await asyncio.gather(
+            *[_fetch_chain_status(cli, c) for c in NODEREAL_CHAINS.keys()],
+            return_exceptions=False,
+        )
+    out = list(results)
+    _node_cache["data"] = out
+    _node_cache["ts"] = now
+    return out
+
+
+async def fetch_wallet_balance(chain: str, address: str) -> dict:
+    """Look up a native-token wallet balance on a given NodeReal chain."""
+    if chain not in NODEREAL_CHAINS:
+        raise HTTPException(400, f"Unsupported chain '{chain}'")
+    if not NODEREAL_API_KEY:
+        raise HTTPException(503, "NodeReal not configured")
+    if not (address.startswith("0x") and len(address) == 42):
+        raise HTTPException(400, "address must be a 0x-prefixed 20-byte EVM address")
+
+    meta = NODEREAL_CHAINS[chain]
+    async with httpx.AsyncClient(timeout=8) as cli:
+        import asyncio
+        bal_hex, nonce_hex, block_hex = await asyncio.gather(
+            _rpc_call(cli, chain, "eth_getBalance", [address, "latest"]),
+            _rpc_call(cli, chain, "eth_getTransactionCount", [address, "latest"]),
+            _rpc_call(cli, chain, "eth_blockNumber", []),
+        )
+    if bal_hex is None:
+        raise HTTPException(502, "Upstream NodeReal RPC failed")
+    balance_native = int(bal_hex, 16) / (10 ** meta["decimals"])
+    return {
+        "chain": chain,
+        "chain_name": meta["name"],
+        "symbol": meta["symbol"],
+        "address": address,
+        "balance": balance_native,
+        "tx_count": int(nonce_hex, 16) if nonce_hex else 0,
+        "as_of_block": int(block_hex, 16) if block_hex else None,
+        "explorer_url": f"{meta['explorer']}/address/{address}",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +504,10 @@ async def dashboard_stats(electricity: float = Query(DEFAULT_ELECTRICITY, ge=0))
     btc_price = prices.get("bitcoin", {}).get("price", 0.0)
     btc_change = prices.get("bitcoin", {}).get("change_24h", 0.0)
 
-    bsc_block = await fetch_bsc_block_number()
+    nodes = await fetch_all_node_statuses()
+    bsc = next((n for n in nodes if n["id"] == "bsc"), None)
+    bsc_block = bsc["block_number"] if bsc else None
+    nodes_online = sum(1 for n in nodes if n.get("online"))
 
     return {
         "btc_price": btc_price,
@@ -366,7 +522,30 @@ async def dashboard_stats(electricity: float = Query(DEFAULT_ELECTRICITY, ge=0))
         "best_roi_year_pct": best_roi if best_roi > 0 else 0.0,
         "electricity": electricity,
         "bsc_block_number": bsc_block,
+        "nodes_total": len(nodes),
+        "nodes_online": nodes_online,
     }
+
+
+# ---------------------------------------------------------------------------
+# NodeReal endpoints
+# ---------------------------------------------------------------------------
+@api.get("/nodes")
+async def list_nodes():
+    """Live multi-chain status (block height, gas price, chainId) via NodeReal RPC."""
+    nodes = await fetch_all_node_statuses()
+    return {
+        "configured": bool(NODEREAL_API_KEY),
+        "chains": nodes,
+        "count": len(nodes),
+        "online": sum(1 for n in nodes if n.get("online")),
+    }
+
+
+@api.get("/wallet/{chain}/{address}")
+async def wallet_balance(chain: str, address: str):
+    """Look up a wallet's native-token balance + tx count via NodeReal RPC."""
+    return await fetch_wallet_balance(chain, address)
 
 
 # ---------------------------------------------------------------------------
