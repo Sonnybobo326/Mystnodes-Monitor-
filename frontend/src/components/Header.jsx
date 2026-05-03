@@ -6,6 +6,7 @@ const tabs = [
   { to: "/rigs", label: "Rigs" },
   { to: "/calculator", label: "Calculator" },
   { to: "/coins", label: "Coins" },
+  { to: "/mystnodes", label: "Mystnodes" },
   { to: "/nodes", label: "Nodes" },
 ];
 

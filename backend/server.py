@@ -16,6 +16,7 @@ import time
 import logging
 from pathlib import Path
 from typing import Optional, List
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, APIRouter, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +40,12 @@ db = mongo_client[os.environ["DB_NAME"]]
 
 # NodeReal RPC (used for BSC block info enrichment)
 NODEREAL_API_KEY = os.environ.get("NODEREAL_API_KEY", "").strip()
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "").strip()
+MYSTNODES_REF_CODE = os.environ.get("MYSTNODES_REF_CODE", "").strip()
+MYSTNODES_REF_URL = (
+    f"https://mystnodes.co/?refCode={MYSTNODES_REF_CODE}"
+    if MYSTNODES_REF_CODE else "https://mystnodes.co/"
+)
 
 DEFAULT_ELECTRICITY = 0.10  # $/kWh
 
@@ -64,6 +71,7 @@ PAPRIKA_IDS = {
     "monero": "xmr-monero",
     "alephium": "alph-alephium",
     "dogecoin": "doge-dogecoin",
+    "mysterium": "myst-mysterium",
 }
 
 
@@ -84,10 +92,43 @@ async def _fetch_one_paprika(cli: httpx.AsyncClient, cg_id: str, paprika_id: str
         return cg_id, None
 
 
+async def _fetch_coingecko_fallback(cli: httpx.AsyncClient, missing_cg_ids: set) -> dict:
+    """Fallback to CoinGecko's free /simple/price for any coins CoinPaprika didn't return."""
+    if not missing_cg_ids:
+        return {}
+    ids = ",".join(missing_cg_ids)
+    try:
+        r = await cli.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={
+                "ids": ids,
+                "vs_currencies": "usd",
+                "include_24hr_change": "true",
+                "include_market_cap": "true",
+                "include_24hr_vol": "true",
+            },
+        )
+        r.raise_for_status()
+        raw = r.json()
+        out = {}
+        for cid, p in raw.items():
+            out[cid] = {
+                "price": p.get("usd", 0.0) or 0.0,
+                "change_24h": p.get("usd_24h_change", 0.0) or 0.0,
+                "market_cap": p.get("usd_market_cap", 0.0) or 0.0,
+                "volume_24h": p.get("usd_24h_vol", 0.0) or 0.0,
+            }
+        return out
+    except Exception as exc:
+        logger.warning("CoinGecko fallback failed: %s", exc)
+        return {}
+
+
 async def fetch_coin_prices() -> dict:
     """Return {cg_id: {price, change_24h, market_cap, volume_24h}}.
 
-    Primary source: CoinPaprika (no key, generous free tier).
+    Primary: CoinPaprika. Fallback: CoinGecko for anything Paprika misses
+    (e.g., MYST has no public Paprika ticker).
     """
     import asyncio
 
@@ -95,8 +136,9 @@ async def fetch_coin_prices() -> dict:
     if _price_cache["data"] and now - _price_cache["ts"] < PRICE_TTL:
         return _price_cache["data"]
 
-    # Build the full list of cg_ids to fetch (mining coins + merge reward coins)
+    # Build the full list of cg_ids to fetch (mining coins + merge reward coins + MYST for Mystnodes)
     cg_ids = set(COINS.keys())
+    cg_ids.add("mysterium")  # MYST token (used by Mystnodes earnings)
     for c in COINS.values():
         for m in c.get("merge_rewards", []) or []:
             cg_ids.add(m["cg_id"])
@@ -115,11 +157,16 @@ async def fetch_coin_prices() -> dict:
             if data:
                 out[cid] = data
 
+        # Fallback to CoinGecko for any cg_id that didn't come back from Paprika
+        missing = {cid for cid in cg_ids if cid not in out}
+        if missing:
+            cg = await _fetch_coingecko_fallback(cli, missing)
+            out.update(cg)
+
     if out:
         _price_cache["data"] = out
         _price_cache["ts"] = now
         return out
-    # If everything failed, return last known cache
     return _price_cache["data"] or {}
 
 
@@ -546,6 +593,172 @@ async def list_nodes():
 async def wallet_balance(chain: str, address: str):
     """Look up a wallet's native-token balance + tx count via NodeReal RPC."""
     return await fetch_wallet_balance(chain, address)
+
+
+# ---------------------------------------------------------------------------
+# Mystnodes — passive income node program
+# ---------------------------------------------------------------------------
+# Reasonable estimates (Feb 2026). These can be tuned without code changes.
+MYSTNODES_PROFILES = [
+    {
+        "id": "raspberry-pi",
+        "name": "Raspberry Pi 4 / 5",
+        "description": "Lowest-cost always-on node. Ideal first node.",
+        "hardware_cost_usd": 95,
+        "power_w": 7,
+        "myst_per_day": 0.45,
+    },
+    {
+        "id": "old-laptop",
+        "name": "Spare laptop / Mini PC",
+        "description": "Re-use idle hardware. Higher bandwidth, more earnings.",
+        "hardware_cost_usd": 0,
+        "power_w": 15,
+        "myst_per_day": 0.85,
+    },
+    {
+        "id": "home-server",
+        "name": "Home server / NAS",
+        "description": "Run multiple Mystnodes containers in parallel.",
+        "hardware_cost_usd": 350,
+        "power_w": 35,
+        "myst_per_day": 2.10,
+    },
+    {
+        "id": "vps-residential",
+        "name": "Residential IP cluster (3 nodes)",
+        "description": "Stack nodes across multiple residential IPs for max yield.",
+        "hardware_cost_usd": 250,
+        "power_w": 25,
+        "myst_per_day": 3.20,
+    },
+]
+
+
+@api.get("/mystnodes")
+async def mystnodes(electricity: float = Query(DEFAULT_ELECTRICITY, ge=0)):
+    """Mystnodes passive-income profiles with live MYST price + referral link."""
+    prices = await fetch_coin_prices()
+    myst_price = prices.get("mysterium", {}).get("price", 0.0)
+    myst_change = prices.get("mysterium", {}).get("change_24h", 0.0)
+
+    profiles = []
+    for p in MYSTNODES_PROFILES:
+        revenue_day = p["myst_per_day"] * myst_price
+        power_cost_day = (p["power_w"] / 1000.0) * 24.0 * electricity
+        profit_day = revenue_day - power_cost_day
+        payback = (
+            p["hardware_cost_usd"] / profit_day
+            if profit_day > 0 and p["hardware_cost_usd"] > 0
+            else None
+        )
+        profiles.append({
+            **p,
+            "revenue_usd_day": revenue_day,
+            "power_cost_usd_day": power_cost_day,
+            "profit_usd_day": profit_day,
+            "profit_usd_month": profit_day * 30.0,
+            "profit_usd_year": profit_day * 365.0,
+            "payback_days": payback,
+            "is_profitable": profit_day > 0,
+        })
+    profiles.sort(key=lambda x: x["profit_usd_day"], reverse=True)
+
+    return {
+        "myst_price_usd": myst_price,
+        "myst_change_24h": myst_change,
+        "referral_url": MYSTNODES_REF_URL,
+        "referral_code": MYSTNODES_REF_CODE,
+        "profiles": profiles,
+        "electricity": electricity,
+    }
+
+
+# ---------------------------------------------------------------------------
+# AI Mining Advisor — Claude Haiku 4.5 via Emergent universal LLM key
+# ---------------------------------------------------------------------------
+class AdvisorRequest(BaseModel):
+    question: str = Field(..., min_length=2, max_length=2000)
+    session_id: Optional[str] = None
+    electricity_usd_kwh: float = Field(DEFAULT_ELECTRICITY, ge=0)
+    budget_usd: Optional[float] = Field(None, ge=0)
+
+
+def _build_advisor_context(electricity: float, prices: dict, budget: Optional[float]) -> str:
+    """Compact, structured context the LLM can reason over without RAG."""
+    coin_lines = []
+    for cid, coin in COINS.items():
+        p = prices.get(cid, {})
+        coin_lines.append(
+            f"- {coin['symbol']} ({coin['algo']}): ${p.get('price', 0):,.4f} "
+            f"({p.get('change_24h', 0):+.2f}% 24h), network {coin['network_hashrate']:,} {coin['unit']}, "
+            f"reward {coin['block_reward']} {coin['symbol']}/blk × {coin['blocks_per_day']} blk/d"
+        )
+    enriched = [compute_profit(r, prices, electricity) for r in RIGS]
+    enriched.sort(key=lambda r: r["profit_usd_day"], reverse=True)
+    profitable = [r for r in enriched if r["is_profitable"]]
+    rig_lines = []
+    for r in enriched[:18]:
+        rig_lines.append(
+            f"- {r['name']} ({r['algo']}, mines {r['coin_symbol']}): {r['hashrate']} {r['unit']}, "
+            f"{r['power_w']}W, ${r['price_usd']:,} → "
+            f"profit/day ${r['profit_usd_day']:.2f}, "
+            f"ROI/yr {r['roi_year_pct'] or 0:.0f}%, payback {r['payback_days'] or 0:.0f}d, "
+            f"{'PROFITABLE' if r['is_profitable'] else 'UNPROFITABLE'}"
+        )
+    budget_line = f"User budget: ${budget:,.0f}." if budget else "User did not specify a budget."
+    return (
+        f"You are RigBot, a brutally honest mining-rig advisor for the RIG.PROFIT app. "
+        f"Style: terse, direct, no fluff. Bullet points OK. Cite specific rig names from the catalog. "
+        f"If nothing is profitable for the user's setup, say so plainly. Round dollar values sensibly.\n\n"
+        f"USER ELECTRICITY: ${electricity:.3f}/kWh\n{budget_line}\n"
+        f"PROFITABLE RIGS RIGHT NOW: {len(profitable)} of {len(enriched)}.\n\n"
+        f"COINS (live prices, 24h change, network hashrate, reward):\n"
+        + "\n".join(coin_lines)
+        + "\n\nRIG CATALOG (top 18 by profit at user's electricity):\n"
+        + "\n".join(rig_lines)
+        + "\n\nAlso available in the app: Mystnodes (passive bandwidth income, see /mystnodes route)."
+    )
+
+
+@api.post("/advisor/ask")
+async def advisor_ask(req: AdvisorRequest):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "AI advisor not configured")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(500, f"emergentintegrations import failed: {exc}")
+
+    prices = await fetch_coin_prices()
+    system_msg = _build_advisor_context(req.electricity_usd_kwh, prices, req.budget_usd)
+
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=req.session_id or f"advisor-{int(time.time()*1000)}",
+        system_message=system_msg,
+    ).with_model("anthropic", "claude-haiku-4-5-20251001")
+
+    try:
+        answer = await chat.send_message(UserMessage(text=req.question))
+    except Exception as exc:
+        logger.exception("advisor LLM call failed")
+        raise HTTPException(502, f"AI advisor failed: {exc}")
+
+    # Persist for history
+    try:
+        await db.advisor_chats.insert_one({
+            "session_id": req.session_id or "anon",
+            "question": req.question,
+            "answer": answer,
+            "electricity": req.electricity_usd_kwh,
+            "budget": req.budget_usd,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    return {"answer": answer, "model": "claude-haiku-4-5", "session_id": req.session_id}
 
 
 # ---------------------------------------------------------------------------

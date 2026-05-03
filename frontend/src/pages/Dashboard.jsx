@@ -105,6 +105,34 @@ export default function Dashboard() {
         )}
       </section>
 
+      {/* Mystnodes passive income strip */}
+      <section className="border-y border-slate-200 bg-slate-900 text-white" data-testid="mystnodes-strip">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid lg:grid-cols-12 gap-8 items-center">
+          <div className="lg:col-span-7">
+            <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-emerald-400 mb-3">
+              Passive Income · No Hashrate Needed
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tighter">
+              Idle hardware? Earn{" "}
+              <span className="text-emerald-400">MYST</span> with Mystnodes.
+            </h2>
+            <p className="mt-3 text-sm text-white/70 max-w-xl leading-relaxed">
+              Run a Mysterium node on a Pi, mini-PC, or NAS. Share unused bandwidth, get paid in
+              MYST. Stacks beautifully with your mining rigs.
+            </p>
+          </div>
+          <div className="lg:col-span-5 flex flex-col sm:flex-row gap-3">
+            <Link
+              to="/mystnodes"
+              data-testid="dash-mystnodes-link"
+              className="flex-1 bg-white text-slate-900 hover:bg-slate-100 transition-colors px-6 py-4 font-bold text-sm uppercase tracking-wider inline-flex items-center justify-center gap-2"
+            >
+              See profiles & earnings <ArrowRight size={14} weight="bold" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Coin market */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10" data-testid="coins-section">
         <div className="flex items-end justify-between mb-6 gap-4 flex-wrap">
