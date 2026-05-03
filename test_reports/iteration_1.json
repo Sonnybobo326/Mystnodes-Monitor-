@@ -1,0 +1,38 @@
+{
+  "summary": "First-pass full-stack test of Money Making Mining Rigs app. 16/16 backend pytest tests passed. Frontend UI flows (Dashboard, Rigs, RigDetail, Calculator, Coins, Navigation) all functional with live data.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Calculator (select dropdown)", "issues": ["React hydration warning in console: '<span> cannot be a child of <option>'. Caused by source-instrumentation spans being injected inside <option> tags. Cosmetic only - dropdown still works correctly. Likely originates from build-time tooling, not Calculator.jsx code itself, but worth verifying."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: investigate hydration warning '<span> cannot be a child of <option>' on /calculator page (cosmetic; not blocking)."
+  ],
+  "critical_code_review_comments": [
+    "server.py docstring says 'CoinGecko + NodeReal' but implementation uses CoinPaprika as primary. Consider updating docstring/comments to avoid future maintainer confusion.",
+    "Hardcoded fallback URL exists nowhere - good (REACT_APP_BACKEND_URL/MONGO_URL fail-fast).",
+    "compute_profit returns the rig dict spread first then computed fields - safe, but if RIGS were ever to gain a key colliding with a computed key (e.g., 'is_profitable'), the rig value would override. Low risk.",
+    "fetch_coin_prices does not surface partial failures to the caller; downstream profit math silently uses 0.0 for missing coin price. Acceptable for graceful degradation but worth logging which coins were missed per request.",
+    "/api/stats triggers a NodeReal RPC call on every request - consider caching for a few seconds to reduce upstream calls."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (created)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% of critical flows"},
+  "test_credentials": "N/A - no auth in this app",
+  "seed_data_creation": "None - app uses static catalog (mining_data.py) and live external prices",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is healthy via pytest at /app/backend/tests/backend_test.py. Live external integrations verified: CoinPaprika returns prices for all 9 coins + DOGE; NodeReal RPC returns positive BSC block number. Frontend uses data-testid extensively (kpi-strip, rigs-table, rig-row-{id}, rig-detail-{id}, coin-card-{SYMBOL}, calc-coin/hashrate/power/price/submit/headline, algo-filter, sort-filter, profitable-only-toggle, nav-{label}). When testing the Coins page, wait for [data-testid^=coin-card-] to populate (data is async). LTC rig 'antminer-l9' is good for verifying merge-rewards (LTC + DOGE). Default electricity is $0.10/kWh; KS5 Pro is currently the most profitable rig.",
+  "rca of the issue": "No critical issues found. Backend integrates correctly with CoinPaprika (price source) and NodeReal (BSC block enrichment). All filters, sorts, and 404 handling work. Frontend renders KPIs, leaderboard (max 8 rigs as designed), 9 coin price rows, detailed rig pages with breakdowns, and the calculator returns valid net-profit numbers."
+}
