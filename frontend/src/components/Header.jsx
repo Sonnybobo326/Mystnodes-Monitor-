@@ -8,6 +8,7 @@ const tabs = [
   { to: "/coins", label: "Coins" },
   { to: "/mystnodes", label: "Mystnodes" },
   { to: "/nodes", label: "Nodes" },
+  { to: "/todos", label: "Todos" },
 ];
 
 export const Header = () => (
