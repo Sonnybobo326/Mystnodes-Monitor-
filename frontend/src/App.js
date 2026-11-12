@@ -9,6 +9,7 @@ import Calculator from "./pages/Calculator";
 import Coins from "./pages/Coins";
 import Nodes from "./pages/Nodes";
 import Mystnodes from "./pages/Mystnodes";
+import Wallet from "./pages/Wallet";
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
           <Route path="/coins" element={<Coins />} />
           <Route path="/nodes" element={<Nodes />} />
           <Route path="/mystnodes" element={<Mystnodes />} />
+          <Route path="/wallet" element={<Wallet />} />
         </Routes>
         <AdvisorChat />
       </BrowserRouter>
